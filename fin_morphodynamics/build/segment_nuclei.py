@@ -296,9 +296,10 @@ def cellpose_segmentation(
 
 if __name__ == "__main__":
     #raw_data_directory = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecFin/HCR_Data/built_zarr_files/"
-    raw_data_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230830\\" #"/mnt/nas/HCR_data/built_zarr_files/"
-    save_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\built_data\\20230830\\"
-    pretrained_model = "C:\\Users\\nlammers\\Projects\\pec_fin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
+    raw_data_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230913\\" #"/mnt/nas/HCR_data/built_zarr_files/"
+    save_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\built_data\\20230913\\"
+    pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
+
     overwrite = True
     model_type = "nuclei"
     output_label_name = "td-Tomato"
