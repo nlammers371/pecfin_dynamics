@@ -4,7 +4,7 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import glob2 as glob
-# from skimage.measure import label, regionprops, regionprops_table
+from skimage.measure import label, regionprops, regionprops_table
 # from scipy.ndimage import distance_transform_edt
 from aicsimageio import AICSImage
 # import math
@@ -58,20 +58,14 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=1, prob_thresh=
 
         print('Extracting stats for ' + data_name)
         probImage = AICSImage(prob_path)
-        prob_data = probImage.data
-        prob_data_thresh = prob_data > prob_thresh
-        nc_indices = np.where(prob_data_thresh == 1)[0]
+        prob_data = np.squeeze(probImage.data)
+        # prob_data_thresh = prob_data > prob_thresh
+        # nc_indices = np.where(prob_data_thresh == 1)[0]
 
-        nc_z = z_ref_array[nc_indices]
-        nc_y = y_ref_array[nc_indices]
-        nc_x = x_ref_array[nc_indices]
-        # extract key image attributes
-        # omero_attrs = image_node.root.zarr.root_attrs['omero']
-        # channel_metadata = omero_attrs['channels']  # list of channels and relevant info
-        multiscale_attrs = image_node.root.zarr.root_attrs['multiscales']
-        dataset_info = multiscale_attrs[0]['datasets']
-        # extract useful info
-        scale_vec = multiscale_attrs[0]["datasets"][level]["coordinateTransformations"][0]["scale"]
+        nc_z = z_ref_array[np.where(prob_data > prob_thresh)]
+        nc_y = y_ref_array[np.where(prob_data > prob_thresh)]
+        nc_x = x_ref_array[np.where(prob_data > prob_thresh)]
+        
 
         # add layer of mask centroids
         label_array = np.asarray(label_data[level].compute())
