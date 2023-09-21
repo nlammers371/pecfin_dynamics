@@ -15,7 +15,7 @@ from functions.utilities import path_leaf
 # import fractal_tasks_core
 
 
-def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=1, prob_thresh=0):
+def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=1, prob_thresh=0, overwrite_flag=False):
 
     # get paths to raw data and processed probability stacks
     raw_root = os.path.join(data_root, "raw_data", date_folder, "")
@@ -47,7 +47,7 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=1, prob_thresh=
         # extract metadata
         prob_name = path_leaf(prob_path)
         data_name = prob_name.replace("_prob.tif", "")
-        save_path = os.path.join(nucleus_root, data_name, '_nucleus_props.csv')
+        save_path = os.path.join(nucleus_root, data_name, 'morph_df.csv')
 
         # well number
         well_ind = prob_name.find("well")

@@ -2,7 +2,7 @@
 Image segmentation via Cellpose library
 """
 from tifffile import TiffWriter
-import shutil
+from tqdm import tqdm
 import logging
 import glob2 as glob
 import os
@@ -170,7 +170,7 @@ def cellpose_segmentation(
     for im in range(len(image_list)):
         nd2_path = image_list[im]
         im_name = path_leaf(nd2_path)
-
+        print("processing " + im_name)
         # read the image data
         imObject = AICSImage(nd2_path)
         n_wells = len(imObject.scenes)
@@ -192,7 +192,7 @@ def cellpose_segmentation(
         if ind_channel == None:
             raise Exception(f"ERROR: Specified segmentation channel ({len(seg_channel_label)}) was not found in data")
 
-        for well_index in range(n_wells):
+        for well_index in tqdm(range(n_wells)):
 
             imObject.set_scene("XYPos:" + str(well_index))
 
@@ -221,10 +221,11 @@ def cellpose_segmentation(
                 segment_flag = True
                 label_name = im_name.replace('.nd2', f"_well{well_index:03}_t{t:03}_labels")
                 label_path = os.path.join(save_data_directory, label_name)
-                if os.path.isdir(label_path + '.tif') and overwrite:
-                    pass
-                elif os.path.isdir(label_path + '.tif'):
+                # if (not os.path.isfile(label_path + '.tif')) | overwrite:
+                #     pass
+                if os.path.isfile(label_path + '.tif') and (overwrite==False):
                     segment_flag = False
+                    # print("skipping " + label_path)
 
                 if segment_flag:
 
@@ -290,17 +291,17 @@ def cellpose_segmentation(
 
                     logging.info(f"End building pyramids, exit")
                 else:
-                    print(f"WARNING: {nd2_path}labels already exists. Skipping. Set overwrite=True to overwrite")
+                    print("skipping " + label_path)
 
     return {}
 
 if __name__ == "__main__":
     #raw_data_directory = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecFin/HCR_Data/built_zarr_files/"
-    raw_data_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230913\\" #"/mnt/nas/HCR_data/built_zarr_files/"
-    save_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pec_fin_dynamics\\fin_morphodynamics\\built_data\\20230913\\"
+    raw_data_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\raw_data\\20230913\\" #"/mnt/nas/HCR_data/built_zarr_files/"
+    save_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\20230913\\"
     pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
 
-    overwrite = True
+    overwrite = False
     model_type = "nuclei"
     output_label_name = "td-Tomato"
     seg_channel_label = "561"
