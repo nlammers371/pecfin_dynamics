@@ -1,4 +1,5 @@
-# import shutil
+#!/bin/env python
+
 # from ome_zarr.reader import Reader
 from tqdm import tqdm
 import pandas as pd
@@ -7,13 +8,10 @@ import glob2 as glob
 from skimage.measure import label, regionprops, regionprops_table
 # from scipy.ndimage import distance_transform_edt
 from aicsimageio import AICSImage
-from alphashape import alphashape
-# import math
-# import dask
 import os
 from functions.utilities import path_leaf
 import open3d as o3d
-
+import skimage.io as skio
 # import fractal_tasks_core
 
 
@@ -61,11 +59,10 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
         # time step index
         time_ind = int(prob_name[well_ind + 9:well_ind+12])
 
-        if im > 0:
-            print("stop")
         print('Extracting stats for ' + data_name)
-        probImage = AICSImage(prob_path)
-        prob_data = np.squeeze(probImage.data)
+        # probImage = AICSImage(prob_path)
+        # prob_data = np.squeeze(probImage.data)
+        prob_data = skio.imread(prob_path, plugin="tifffile")
         # prob_data_thresh = prob_data > prob_thresh
         # nc_indices = np.where(prob_data_thresh == 1)[0]
 
@@ -110,7 +107,8 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
 
 if __name__ == "__main__":
     # define some variables
-    root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
+    # root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
+    root = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
     date_folder = "20230830"
     prob_thresh = -4
     extract_nucleus_stats_prob(root, date_folder, prob_thresh=prob_thresh, voxel_res=3)
