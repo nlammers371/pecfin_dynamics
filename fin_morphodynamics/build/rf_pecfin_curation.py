@@ -218,8 +218,9 @@ def visualize_atlas(dataRoot):
         # initialize label and label indicator columns
         nucleus_df["is_labeled_flag"] = 0
         nucleus_df["labels_assigned"] = -1
-        nucleus_df["special_labels_assigned"] = -1
+        # nucleus_df["special_labels_assigned"] = -1
         nucleus_df["labels_rf"] = -1
+
     def load_nucleus_dataset(well_time_index):
 
         modelPath = dataRoot + 'model.sav'
@@ -707,42 +708,28 @@ def visualize_atlas(dataRoot):
             # add nucleus class predictions
             # class_predictions = class_predictions
             if len(class_predictions) == df.shape[0]:
-                df["labels_rf"] = class_predictions
-                for b in base_points:
-                    df.loc[base_points[b]["ind"], "labels_assigned"] = 0
-                for o in other_points:
-                    df.loc[other_points[o]["ind"], "labels_assigned"] = 1
-                for p in fin_points:
-                    df.loc[fin_points[p]["ind"], "labels_assigned"] = 2
-                for f in fin_tip_point:
-                    df.loc[fin_points[f]["ind"], "labels_assigned"] = 3
-                    
+                df.loc[:, "labels_rf"] = class_predictions
 
-            # save auxiliary files
-            write_file2 = dataRoot + fileName + '_curation_info/base_points.pkl'
-            with open(write_file2, 'wb') as wf:
-                pickle.dump(base_points, wf)
+            base_points = json.loads(base_points)
+            other_points = json.loads(other_points)
+            fin_points = json.loads(fin_points)
+            fin_tip_point = json.loads(fin_tip_point)
 
-            write_file3 = dataRoot + fileName + '_curation_info/fin_points.pkl'
-            with open(write_file3, 'wb') as wf:
-                pickle.dump(fin_points, wf)
+            for b in base_points:
+                df.loc[b["pointNumber"], "labels_assigned"] = 0
+            for o in other_points:
+                df.loc[o["pointNumber"], "labels_assigned"] = 1
+            for p in fin_points:
+                df.loc[p["pointNumber"], "labels_assigned"] = 2
+            for ft in fin_tip_point:
+                df.loc[ft["pointNumber"], "labels_assigned"] = 3
 
-            write_file4 = dataRoot + fileName + '_curation_info/other_points.pkl'
-            with open(write_file4, 'wb') as wf:
-                pickle.dump(other_points, wf)
 
-            write_file5 = dataRoot + fileName + '_curation_info/fin_tip_point.pkl'
-            with open(write_file5, 'wb') as wf:
-                pickle.dump(fin_tip_point, wf)
+            for col in nucleus_df.columns:
+                nucleus_df.loc[nucleus_df["file"] == fileName, col] = df.loc[:, col]
 
-            write_file6 = dataRoot + fileName + '_curation_info/fin_surf_model.pkl'
-            with open(write_file6, 'wb') as wf:
-                pickle.dump(fin_surf_model, wf)
 
-            write_file7 = dataRoot + fileName + '_curation_info/pca_fin.pkl'
-            with open(write_file7, 'wb') as wf:
-                pickle.dump(pca_fin, wf)
-
+            nucleus_df.to_csv(os.path.join(dataRoot, "morph_df_curated.csv"))
             # save
             # model_file = dataRoot + 'model.sav'
             # pickle.dump(model, open(model_file, 'wb'))
