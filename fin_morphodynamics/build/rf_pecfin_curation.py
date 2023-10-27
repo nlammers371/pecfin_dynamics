@@ -209,9 +209,9 @@ def visualize_atlas(dataRoot):
     else:
         raise Exception("No nucleus dataset found.")
 
+    well_time_index = np.unique(nucleus_df["file"])
     if initialize_label_fields:
         # get list of unique well-time point combinations and add to dataframe
-        well_time_index = np.unique(nucleus_df["file"])
         for w, well_time in enumerate(well_time_index):
             nucleus_df.loc[nucleus_df["file"] == well_time, "well_time_index"] = int(w)
 
@@ -263,7 +263,7 @@ def visualize_atlas(dataRoot):
                                fin_tip_indices]
 
         if np.min(df["labels_rf"]) >= 0:
-            class_predictions_curr = df["labels_rf"].values()
+            class_predictions_curr = df["labels_rf"].to_numpy()
 
 
         return {"df": df, "class_predictions_curr": class_predictions_curr, "fin_points_prev": fin_points_prev,
