@@ -740,7 +740,7 @@ def visualize_atlas(dataRoot):
 if __name__ == '__main__':
 
     # set parameters
-    dataRoot = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/nucleus_data/20230830/"
+    dataRoot = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/nucleus_data/20230913_test/"
 
     # load image data
     visualize_atlas(dataRoot)

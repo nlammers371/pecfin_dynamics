@@ -12,10 +12,12 @@ import os
 from functions.utilities import path_leaf
 import open3d as o3d
 import skimage.io as skio
+from skimage import transform
+
 # import fractal_tasks_core
 
 
-def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=0):
+def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=0, pixel_res_vec=None):
 
     # get paths to raw data and processed probability stacks
     raw_root = os.path.join(data_root, "raw_data", date_folder, "")
@@ -26,18 +28,12 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
 
     # get metadata from raw file. If there arte multiple .nd2 files in single date folder, we assume that the pixel
     # sizes are the same for each
-    nd2_paths = glob.glob(raw_root + "*.nd2")
-    imObject = AICSImage(nd2_paths[0])
+    if pixel_res_vec is None:
+        nd2_paths = glob.glob(raw_root + "*.nd2")
+        imObject = AICSImage(nd2_paths[0])
 
     # extract dimension info and generate a scale reference array
-    pixel_res_raw = np.asarray(imObject.physical_pixel_sizes)
-    im_dims = np.asarray([imObject.dims["Z"][0], imObject.dims["Y"][0], imObject.dims["X"][0]])
-
-    z_vec = np.arange(im_dims[0]) * pixel_res_raw[0]
-    y_vec = np.arange(im_dims[1]) * pixel_res_raw[1]
-    x_vec = np.arange(im_dims[2]) * pixel_res_raw[2]
-
-    z_ref_array, y_ref_array, x_ref_array = np.meshgrid(z_vec, y_vec, x_vec, indexing="ij")
+        pixel_res_vec = np.asarray(imObject.physical_pixel_sizes)
 
     # get list of datasets with nucleus labels
     image_list = sorted(glob.glob(built_root + "*_probs.tif"))
@@ -45,6 +41,7 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
     morph_df_list = []
     morph_df_key_list = []
 
+    print('Extracting stats for prob stacks')
     for im, prob_path in enumerate(tqdm(image_list)):
 
         # extract metadata
@@ -59,17 +56,31 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
         # time step index
         time_ind = int(prob_name[well_ind + 9:well_ind+12])
 
-        print('Extracting stats for ' + data_name)
+        # print('Extracting stats for ' + data_name)
         # probImage = AICSImage(prob_path)
         # prob_data = np.squeeze(probImage.data)
         prob_data = skio.imread(prob_path, plugin="tifffile")
+        out_shape = np.round(np.multiply(prob_data.shape, pixel_res_vec / pixel_res_vec[0]), 0).astype(int)
+        prob_data_rs = transform.resize(prob_data, out_shape)
+
         # prob_data_thresh = prob_data > prob_thresh
         # nc_indices = np.where(prob_data_thresh == 1)[0]
+        # im_dims = np.asarray([prob_data.shape[0], prob_data.shape[1], prob_data.shape[2]])
+        #
+        # z_vec = np.arange(im_dims[0]) * pixel_res_vec[0]
+        # y_vec = np.arange(im_dims[1]) * pixel_res_vec[1]
+        # x_vec = np.arange(im_dims[2]) * pixel_res_vec[2]
 
+        im_dims = out_shape
+        z_vec = np.arange(im_dims[0]) * pixel_res_vec[0]
+        y_vec = np.arange(im_dims[1]) * pixel_res_vec[0]
+        x_vec = np.arange(im_dims[2]) * pixel_res_vec[0]
+
+        z_ref_array, y_ref_array, x_ref_array = np.meshgrid(z_vec, y_vec, x_vec, indexing="ij")
         # extract 3D positions of each foreground pixel. This is just a high-res point cloud
-        nc_z = z_ref_array[np.where(prob_data > prob_thresh)]
-        nc_y = y_ref_array[np.where(prob_data > prob_thresh)]
-        nc_x = x_ref_array[np.where(prob_data > prob_thresh)]
+        nc_z = z_ref_array[np.where(prob_data_rs > prob_thresh)]
+        nc_y = y_ref_array[np.where(prob_data_rs > prob_thresh)]
+        nc_x = x_ref_array[np.where(prob_data_rs > prob_thresh)]
 
         # Pass xyz to Open3D.o3d.geometry.PointCloud and visualize
         xyz_array = np.concatenate((nc_x[:, np.newaxis], nc_y[:, np.newaxis], nc_z[:, np.newaxis]), axis=1)
@@ -107,8 +118,10 @@ def extract_nucleus_stats_prob(data_root, date_folder, voxel_res=2, prob_thresh=
 
 if __name__ == "__main__":
     # define some variables
-    # root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
-    root = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
-    date_folder = "20230830"
+    root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
+    # root = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
+    # date_folder = "20230913_test"
+    pixel_res_raw = np.array([2. , 0.275, 0.275])
+    date_folder = "20230913_test"
     prob_thresh = -4
-    extract_nucleus_stats_prob(root, date_folder, prob_thresh=prob_thresh, voxel_res=3)
+    extract_nucleus_stats_prob(root, date_folder, prob_thresh=prob_thresh, voxel_res=3, pixel_res_vec=pixel_res_raw)
