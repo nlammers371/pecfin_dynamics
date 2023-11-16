@@ -5,7 +5,8 @@ from skimage.transform import resize
 # read the image data
 from ome_zarr.io import parse_url
 
-full_filename = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230830\\tdTom_54hpf_pecfin_40x.nd2"
+# full_filename = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230830\\tdTom_54hpf_pecfin_40x.nd2"
+full_filename = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/20230830/tdTom_54hpf_pecfin_40x.nd2"
 imObject = AICSImage(full_filename)
 imObject.set_scene("XYPos:6")
 imData = np.squeeze(imObject.get_image_data("TZYX", C=0))
