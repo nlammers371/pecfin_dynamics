@@ -10,11 +10,16 @@ from skimage.transform import resize
 import pandas as pd
 # import open3d as o3d
 
-root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
-date_folder = "20230830"
-filename = "tdTom_54hpf_pecfin_40x"
+# root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
+root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
+date_folder = "20230913"
+filename = "tdTom_prdm_pecfin_40x"
 target_res_xy = 1
 prob_thresh = -4
+
+well_ind_list = [0]#, 19] #, 20]
+update_flag = True
+# hull_alpha = 8
 
 # load metadata
 ref_image_path = os.path.join(root, "raw_data", date_folder, filename + ".nd2")
@@ -23,7 +28,8 @@ imObject = AICSImage(ref_image_path)
 # git list of prob files produced by CellPose
 prob_file_dir = os.path.join(root, "built_data", date_folder, "")
 prob_file_list = glob(prob_file_dir + filename + "*probs*")
-
+prob_file_list = [file for file in prob_file_list if "full_embryo" not in file]
+prob_file_list = [file for file in prob_file_list if "whole_embryo" not in file]
 # make directory for saving fin masks
 fin_mask_dir = os.path.join(root, "fin_masks", date_folder, "")
 if not os.path.isdir(fin_mask_dir):
@@ -47,7 +53,7 @@ def event_trigger(event):
         point_data = event.source.data
         calculate_fin_hull(point_data)
 
-def calculate_fin_hull(point_data):
+def calculate_fin_hull(point_data, hull_alpha=7):
 
     # point_data = point_data.source.data
     point_data_norm = np.divide(point_data, im_dims)
@@ -55,7 +61,7 @@ def calculate_fin_hull(point_data):
     if point_data.shape[0] == 6:
         update_lb_flag = True
         
-        hull = alphashape(point_data_norm, alpha=0.01)
+        hull = alphashape(point_data_norm, alpha=hull_alpha)
         values = np.linspace(0.5, 1, len(hull.vertices))
         surf = (np.multiply(hull.vertices, im_dims), hull.faces, values)
         fin_hull_layer = viewer.add_surface(surf, name="fin_hull", colormap="bop blue", scale=scale_vec, opacity=0.5)
@@ -63,7 +69,7 @@ def calculate_fin_hull(point_data):
     elif point_data.shape[0] > 6:
         update_lb_flag = True
         
-        hull = alphashape(point_data_norm, alpha=0.01)
+        hull = alphashape(point_data_norm, alpha=hull_alpha)
         values = np.linspace(0.5, 1, len(hull.vertices))
         surf = (np.multiply(hull.vertices, im_dims), hull.faces, values)
 
@@ -124,18 +130,21 @@ for p in range(len(prob_file_list)):
     time_ind = int(prob_name[well_ind + 9:well_ind + 12])
     time_id_vec.append(time_ind)
 
-well_index = np.unique(well_id_vec)
+metadata_array = np.concatenate((np.asarray(well_id_vec)[:, np.newaxis], np.asarray(time_id_vec)[:, np.newaxis]), axis=1)
+keep_indices = np.asarray([i for i in range(metadata_array.shape[0]) if well_id_vec[i] in well_ind_list])
+metadata_array = metadata_array[keep_indices, :]
 
-p = np.asarray(well_id_vec).argsort()
 
-prob_file_list_sorted = np.asarray(prob_file_list)[np.lexsort((np.asarray(well_id_vec), np.asarray(time_id_vec)))][::-1]
+prob_file_list_sorted = np.asarray(prob_file_list)
+prob_file_list_sorted = prob_file_list_sorted[keep_indices]
+prob_file_list_sorted = prob_file_list_sorted[np.lexsort((np.asarray(metadata_array[:, 1]), metadata_array[:, 0]))][::-1]
+
 prev_well = None
 while image_i < len(prob_file_list_sorted):
     prob_name = prob_file_list_sorted[image_i]
 
     im_prob = skio.imread(prob_name, plugin="tifffile")
     im_bin = im_prob >= prob_thresh
-    viewer = napari.view_image(im_prob, colormap="gray", scale=scale_vec, contrast_limits=(prob_thresh, np.percentile(im_prob, 99.5)))
 
     ############
     # check for existing points file
@@ -155,97 +164,116 @@ while image_i < len(prob_file_list_sorted):
 
     nucleus_name = prob_name_short.replace("probs.tif", "fin_interior_points.csv")
     nucleus_path = os.path.join(fin_point_dir, nucleus_name)
-    ############
-    # generate reference arrays
-    im_dims = im_prob.shape
-    ds_array = np.divide(scale_array_rs, scale_array)
-    im_dims_ds = np.round(np.divide(np.asarray(im_dims), ds_array)).astype(int)
+    skip_flag = False
+    if os.path.isfile(nucleus_path) and (not update_flag):
+        skip_flag = True
 
-    z_vec = np.arange(im_dims_ds[0])
-    y_vec = np.arange(im_dims_ds[1])
-    x_vec = np.arange(im_dims_ds[2])
-
-    z_ref_array, y_ref_array, x_ref_array = np.meshgrid(z_vec, y_vec, x_vec, indexing="ij")
-    zyx_array = np.concatenate((z_ref_array.flatten()[:, np.newaxis],
-                                y_ref_array.flatten()[:, np.newaxis],
-                                x_ref_array.flatten()[:, np.newaxis]), axis=1)
-    zyx_array_norm = np.divide(zyx_array, im_dims_ds)
-
-    #############
-    # get positions of nuclei
-    zyx_nuclei = extract_nucleus_stats_prob(im_prob, im_dims_ds)
-    zyx_nuclei_norm = np.divide(zyx_nuclei, im_dims_ds)
-
-    #############
-    # generate label array
-    label_array = np.zeros(im_dims, dtype=np.uint8)
-    label_layer = viewer.add_labels(label_array, name='labels', scale=scale_vec)
-
-    # initialize points layer
-    if os.path.isfile(point_path):
         point_array = np.load(point_path)
         point_array = np.divide(point_array, scale_vec)
-        points_layer = viewer.add_points(point_array, name="fin hull points", size=8, scale=scale_vec,
-                                         n_dimensional=True)
-        if point_array.shape[0] >= 6:
-            calculate_fin_hull(point_array)
-    else:
-        point_array = np.empty((0, 3))
+
+    if not skip_flag:
+        ############
+        # generate reference arrays
+        im_dims = im_prob.shape
+        ds_array = np.divide(scale_array_rs, scale_array)
+        im_dims_ds = np.round(np.divide(np.asarray(im_dims), ds_array)).astype(int)
+
+        z_vec = np.arange(im_dims_ds[0])
+        y_vec = np.arange(im_dims_ds[1])
+        x_vec = np.arange(im_dims_ds[2])
+
+        z_ref_array, y_ref_array, x_ref_array = np.meshgrid(z_vec, y_vec, x_vec, indexing="ij")
+        zyx_array = np.concatenate((z_ref_array.flatten()[:, np.newaxis],
+                                    y_ref_array.flatten()[:, np.newaxis],
+                                    x_ref_array.flatten()[:, np.newaxis]), axis=1)
+        zyx_array_norm = np.divide(zyx_array, im_dims_ds)
+
+        #############
+        # get positions of nuclei
+        zyx_nuclei = extract_nucleus_stats_prob(im_prob, im_dims_ds)
+        zyx_nuclei_norm = np.divide(zyx_nuclei, im_dims_ds)
+
+        # initialize viewer
+        viewer = napari.view_image(im_prob, colormap="gray", scale=scale_vec,
+                                   contrast_limits=(prob_thresh, np.percentile(im_prob, 99.5)))
+
+        #############
+        # generate label array
+        label_array = np.zeros(im_dims, dtype=np.uint8)
+        label_layer = viewer.add_labels(label_array, name='labels', scale=scale_vec)
+
+        # initialize points layer
+        if os.path.isfile(point_path):
+            point_array = np.load(point_path)
+            point_array = np.divide(point_array, scale_vec)
+            # points_layer = viewer.add_points(point_array, name="fin hull points", size=8, scale=scale_vec,
+            #                                  n_dimensional=True)
+            if point_array.shape[0] >= 6:
+                calculate_fin_hull(point_array)
+        elif carry_flag:
+            point_array = point_array_prev
+        else:
+            point_array = np.empty((0, 3))
         points_layer = viewer.add_points(point_array, name="fin hull points", size=8, scale=scale_vec, n_dimensional=True)
 
-    points_layer.events.data.connect(event_trigger)
+        points_layer.events.data.connect(event_trigger)
 
-    napari.run()
+        napari.run()
 
-    points_layer = viewer.layers["fin hull points"]
-    label_array = np.asarray(viewer.layers["labels"].data)
+        points_layer = viewer.layers["fin hull points"]
+        label_array = np.asarray(viewer.layers["labels"].data)
 
-    # save hull points to file
-    hull_point_array = np.asarray(points_layer.data)
-    hull_point_array = np.multiply(hull_point_array, scale_array)
-    np.save(point_path, hull_point_array)
+        # save hull points to file
+        hull_point_array = np.asarray(points_layer.data)
+        hull_point_array = np.multiply(hull_point_array, scale_array)
+        np.save(point_path, hull_point_array)
 
-    # save fin points to file
-    fin_point_array = extract_nucleus_stats_prob(label_array, im_dims_ds, prob_thresh=0.5)
-    fin_point_array = np.multiply(fin_point_array, scale_array_rs)
-    fin_df = pd.DataFrame(fin_point_array, columns=["Z", "Y", "X"])
+        # save fin points to file
+        fin_point_array = extract_nucleus_stats_prob(label_array, im_dims_ds, prob_thresh=0.5)
+        fin_point_array = np.multiply(fin_point_array, scale_array_rs)
+        fin_df = pd.DataFrame(fin_point_array, columns=["Z", "Y", "X"])
 
-    # fin_df.loc[:, "filename"] = prob_name_short
-    fin_df.loc[:, "well_num"] = well_num
-    fin_df.loc[:, "time_ind"] = time_ind
-    fin_df.loc[:, "xy_res"] = scale_array_rs[1]
-    fin_df.loc[:, "z_res"] = scale_array_rs[0]
-    fin_df.loc[:, "fin_flag"] = 1
+        # fin_df.loc[:, "filename"] = prob_name_short
+        fin_df.loc[:, "well_num"] = well_num
+        fin_df.loc[:, "time_ind"] = time_ind
+        fin_df.loc[:, "xy_res"] = scale_array_rs[1]
+        fin_df.loc[:, "z_res"] = scale_array_rs[0]
+        fin_df.loc[:, "fin_flag"] = 1
 
-    # save other points to file
-    prob_array_other = im_prob.copy()
-    prob_array_other[label_array > 0.5] = -100  # some large negative number
-    other_point_array = extract_nucleus_stats_prob(prob_array_other, im_dims_ds, prob_thresh=prob_thresh)
-    other_point_array = np.multiply(other_point_array, scale_array_rs)
-    other_df = pd.DataFrame(other_point_array, columns=["Z", "Y", "X"])
+        # save other points to file
+        prob_array_other = im_prob.copy()
+        prob_array_other[label_array > 0.5] = -100  # some large negative number
+        other_point_array = extract_nucleus_stats_prob(prob_array_other, im_dims_ds, prob_thresh=prob_thresh)
+        other_point_array = np.multiply(other_point_array, scale_array_rs)
+        other_df = pd.DataFrame(other_point_array, columns=["Z", "Y", "X"])
 
-    # fin_df.loc[:, "filename"] = prob_name_short
-    other_df.loc[:, "well_num"] = well_num
-    other_df.loc[:, "time_ind"] = time_ind
-    other_df.loc[:, "xy_res"] = scale_array_rs[1]
-    other_df.loc[:, "z_res"] = scale_array_rs[0]
-    other_df.loc[:, "fin_flag"] = 0
+        # fin_df.loc[:, "filename"] = prob_name_short
+        other_df.loc[:, "well_num"] = well_num
+        other_df.loc[:, "time_ind"] = time_ind
+        other_df.loc[:, "xy_res"] = scale_array_rs[1]
+        other_df.loc[:, "z_res"] = scale_array_rs[0]
+        other_df.loc[:, "fin_flag"] = 0
 
-    # viewer.add_points(other_point_array, name="other points", size=8, n_dimensional=True)
+        # viewer.add_points(other_point_array, name="other points", size=8, n_dimensional=True)
 
-    fin_label_df = pd.concat([fin_df, other_df], axis=0, ignore_index=True)
+        fin_label_df = pd.concat([fin_df, other_df], axis=0, ignore_index=True)
 
-    fin_label_df.to_csv(nucleus_path)
+        fin_label_df.to_csv(nucleus_path)
+    else:
+        print("Existing annotated nucleus file found. Skipping...")
+    # update iterator
+    point_array_prev = point_array
+    prev_well = well_num
 
     wait = input(
-        "Press Enter to continue to next image. \nPress 'x' then Enter to exit. \nPress 'n' then Enter to move to next experiment.")
+        "Press Enter to continue to next image. \nPress 'x' then Enter to exit. \nPress Enter to move to next experiment.")
     if wait == 'x':
         break
-    elif wait == 'n':
-        break
+    # elif wait == 'n':
+    #     image_i += 1
     else:
         image_i += 1
-        print(image_i)
+        # print(image_i)
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 # if __name__ == '__main__':
 #     napari.run()
