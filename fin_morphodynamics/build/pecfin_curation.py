@@ -17,7 +17,8 @@ filename = "tdTom_prdm_pecfin_40x"
 target_res_xy = 1
 prob_thresh = -4
 
-well_ind_list = [0]#, 19] #, 20]
+well_ind_list = [19]#, 19] #, 20]
+max_time = 10
 update_flag = True
 # hull_alpha = 8
 
@@ -53,7 +54,7 @@ def event_trigger(event):
         point_data = event.source.data
         calculate_fin_hull(point_data)
 
-def calculate_fin_hull(point_data, hull_alpha=7):
+def calculate_fin_hull(point_data, hull_alpha=4):
 
     # point_data = point_data.source.data
     point_data_norm = np.divide(point_data, im_dims)
@@ -80,13 +81,13 @@ def calculate_fin_hull(point_data, hull_alpha=7):
         viewer.layers["fin_hull"].refresh()
     
     if update_lb_flag:
-
-        inside_flags = hull.contains(zyx_nuclei_norm)
-        fin_points = zyx_nuclei[np.where(inside_flags == 1)[0], :].astype(int)
-        new_labels = np.zeros(im_dims_ds, dtype=np.int8)
-        new_labels[fin_points[:, 0], fin_points[:, 1], fin_points[:, 2]] = 1
-        viewer.layers["labels"].data = resize(new_labels, im_dims, preserve_range=True, order=0)
-        viewer.layers["labels"].refresh()
+        if len(hull.faces) > 2:
+            inside_flags = hull.contains(zyx_nuclei_norm)
+            fin_points = zyx_nuclei[np.where(inside_flags == 1)[0], :].astype(int)
+            new_labels = np.zeros(im_dims_ds, dtype=np.int8)
+            new_labels[fin_points[:, 0], fin_points[:, 1], fin_points[:, 2]] = 1
+            viewer.layers["labels"].data = resize(new_labels, im_dims, preserve_range=True, order=0)
+            viewer.layers["labels"].refresh()
 
         # viewer.layers["fin points"].data = fin_points
         # viewer.layers["fin points"].refresh()
@@ -139,7 +140,12 @@ prob_file_list_sorted = np.asarray(prob_file_list)
 prob_file_list_sorted = prob_file_list_sorted[keep_indices]
 prob_file_list_sorted = prob_file_list_sorted[np.lexsort((np.asarray(metadata_array[:, 1]), metadata_array[:, 0]))][::-1]
 
+metadata_array = metadata_array[np.lexsort((np.asarray(metadata_array[:, 1]), metadata_array[:, 0])), :][::-1]
+t_indices = np.where(metadata_array[:, 1] <= max_time)[0]
+
+prob_file_list_sorted = prob_file_list_sorted[t_indices]
 prev_well = None
+
 while image_i < len(prob_file_list_sorted):
     prob_name = prob_file_list_sorted[image_i]
 
@@ -170,6 +176,10 @@ while image_i < len(prob_file_list_sorted):
 
         point_array = np.load(point_path)
         point_array = np.divide(point_array, scale_vec)
+
+    # if time_ind > 22:
+    #     skip_flag = True
+    #     print("Skipping temporarily")
 
     if not skip_flag:
         ############
