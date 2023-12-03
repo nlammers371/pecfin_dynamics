@@ -17,8 +17,8 @@ filename = "tdTom_prdm_pecfin_40x"
 target_res_xy = 1
 prob_thresh = -4
 
-well_ind_list = [19]#, 19] #, 20]
-max_time = 10
+well_ind_list = [0]#, 19] #, 20]
+max_time = 50
 update_flag = True
 # hull_alpha = 8
 
