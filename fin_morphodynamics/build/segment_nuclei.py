@@ -15,7 +15,7 @@ from typing import Optional
 import numpy as np
 from cellpose import models
 from cellpose.core import use_gpu
-# import fractal_tasks_core
+from skimage.transform import resize
 from functions.utilities import path_leaf
 
 # logging = logging.getlogging(__name__)
@@ -113,8 +113,8 @@ def segment_FOV(
 def cellpose_segmentation(
     *,
     # Fractal arguments
-    raw_data_directory: str,
-    save_data_directory: str,
+    root: str,
+    experiment_date: str,
     # Task-specific arguments
     seg_channel_label: Optional[str] = None,
     cell_diameter: float = 30,
@@ -124,7 +124,8 @@ def cellpose_segmentation(
     model_type: Literal["nuclei", "cyto", "cyto2"] = "nuclei",
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
-    return_probs: Optional[bool] = False
+    return_probs: Optional[bool] = False,
+    xy_ds_factor: Optional[float] = 1.0
 ) -> Dict[str, Any]:
     """
     Run cellpose segmentation on the ROIs of a single OME-NGFF image
@@ -137,7 +138,7 @@ def cellpose_segmentation(
         component = "some_plate.zarr/B/03/0"
         metadata = {"num_levels": 4, "coarsening_xy": 2}
 
-    :param raw_data_directory: path to directory containing zarr folders for images to segment
+    :param raw_directory: path to directory containing zarr folders for images to segment
     :param seg_channel_label: Identifier of a channel based on its label (e.g.
                           ``DAPI``). If not ``None``, then ``wavelength_id``
                           must be ``None``.
@@ -153,8 +154,14 @@ def cellpose_segmentation(
     """
 
     # Read useful parameters from metadata
-    min_size = (cell_diameter/4)**3
+    min_size = (cell_diameter/4)**3 / xy_ds_factor**2
 
+    raw_directory = os.path.join(root, "raw_data", experiment_date, '')
+
+    save_directory = os.path.join(root, "built_data", "cellpose_output", experiment_date, '')
+    if not os.path.isdir(save_directory):
+        os.makedirs(save_directory)
+        
     # Preliminary check
     if seg_channel_label is None:
         raise ValueError(
@@ -162,10 +169,10 @@ def cellpose_segmentation(
         )
 
     # get list of images
-    image_list = sorted(glob.glob(raw_data_directory + "*.nd2"))
+    image_list = sorted(glob.glob(raw_directory + "*.nd2"))
 
-    if not os.path.isdir(save_data_directory):
-        os.makedirs(save_data_directory)
+    if not os.path.isdir(save_directory):
+        os.makedirs(save_directory)
 
     for im in range(len(image_list)):
         nd2_path = image_list[im]
@@ -174,14 +181,15 @@ def cellpose_segmentation(
         # read the image data
         imObject = AICSImage(nd2_path)
         n_wells = len(imObject.scenes)
+        well_list = imObject.scenes
         n_time_points = imObject.dims["T"][0]
 
         # extract key image attributes
         channel_names = imObject.channel_names  # list of channels and relevant info
 
         pixel_res_raw = np.asarray(imObject.physical_pixel_sizes)
-        anisotropy = pixel_res_raw[0] / pixel_res_raw[1]
 
+        anisotropy_raw = pixel_res_raw[0] / pixel_res_raw[1]
         # Find channel index
         ind_channel = None
         for ch in range(len(channel_names)):
@@ -193,12 +201,20 @@ def cellpose_segmentation(
             raise Exception(f"ERROR: Specified segmentation channel ({len(seg_channel_label)}) was not found in data")
 
         for well_index in tqdm(range(n_wells)):
-
-            imObject.set_scene("XYPos:" + str(well_index))
+            well_id_string = well_list[well_index]
+            well_num = int(well_id_string.replace("XYPos:", ""))
+            imObject.set_scene(well_id_string)
 
             for t in range(n_time_points):
                 # extract image
-                data_zyx = np.squeeze(imObject.get_image_data("CZYX", T=t))
+                data_zyx_raw = np.squeeze(imObject.get_image_data("CZYX", T=t))
+
+                # rescale data
+                dims_orig = data_zyx_raw.shape
+                dims_new = np.round([dims_orig[0], dims_orig[1]/xy_ds_factor, dims_orig[2]/xy_ds_factor]).astype(int)
+                data_zyx = resize(data_zyx_raw, dims_new, order=1)
+
+                anisotropy = anisotropy_raw * dims_new[1] / dims_orig[1]
 
                 # Select 2D/3D behavior and set some parameters
                 do_3D = data_zyx.shape[0] > 1
@@ -219,8 +235,8 @@ def cellpose_segmentation(
                         output_label_name = f"label_{ind_channel}"
 
                 segment_flag = True
-                label_name = im_name.replace('.nd2', f"_well{well_index:03}_t{t:03}_labels")
-                label_path = os.path.join(save_data_directory, label_name)
+                label_name = im_name.replace('.nd2', "_" + experiment_date + f"_well{well_num:03}_t{t:03}_labels")
+                label_path = os.path.join(save_directory, label_name)
                 # if (not os.path.isfile(label_path + '.tif')) | overwrite:
                 #     pass
                 if os.path.isfile(label_path + '.tif') and (overwrite==False):
@@ -257,7 +273,7 @@ def cellpose_segmentation(
                         do_3D=do_3D,
                         anisotropy=anisotropy,
                         label_dtype=np.uint32,
-                        diameter=cell_diameter,
+                        diameter=cell_diameter / xy_ds_factor,
                         cellprob_threshold=cellprob_threshold,
                         flow_threshold=flow_threshold,
                         min_size=min_size,
@@ -271,16 +287,20 @@ def cellpose_segmentation(
                     #image_mask_1 = resize(image_mask, (image_mask.shape[0], shape0[1], shape0[2]), order=0)
                     # if False: #level == 0:
                     #     image_mask_0 = image_mask.copy()
-                    # else:
-                    #     image_mask_0 = resize(image_mask, shape0, order=0, anti_aliasing=False, preserve_range=True)
+                    if xy_ds_factor >= 1.0:
+                        image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
+                        image_probs_out = resize(image_probs, dims_orig, order=1)
 
-
+                    else:
+                        image_mask_out = image_mask
+                        image_probs_out = image_probs
+                    
                     with TiffWriter(label_path + '.tif', bigtiff=True) as tif:
-                        tif.write(image_mask)
+                        tif.write(image_mask_out)
 
                     if return_probs:
-                        prob_name = im_name.replace('.nd2', f"_well{well_index:03}_t{t:03}_probs")
-                        prob_path = os.path.join(save_data_directory, prob_name)
+                        prob_name = im_name.replace('.nd2', "_" + experiment_date + f"_well{well_num:03}_t{t:03}_probs")
+                        prob_path = os.path.join(save_directory, prob_name)
                         with TiffWriter(prob_path + '.tif', bigtiff=True) as tif:
                             tif.write(image_probs)
 
@@ -296,16 +316,21 @@ def cellpose_segmentation(
     return {}
 
 if __name__ == "__main__":
-    #raw_data_directory = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecFin/HCR_Data/built_zarr_files/"
-    raw_data_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\raw_data\\20230913\\" #"/mnt/nas/HCR_data/built_zarr_files/"
-    save_directory = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\20230913\\"
-    pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
-
+    # sert some hyperparameters
     overwrite = False
     model_type = "nuclei"
     output_label_name = "td-Tomato"
     seg_channel_label = "561"
+    xy_ds_factor = 3
 
-    cellpose_segmentation(raw_data_directory=raw_data_directory, save_data_directory=save_directory,
-                          seg_channel_label=seg_channel_label, return_probs=True,
+    # set path to CellPose model to use
+    pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
+
+    # set read/write paths
+    root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
+    experiment_date = "20231013"
+
+    cellpose_segmentation(root=root, experiment_date=experiment_date,
+                          # raw_directory=raw_directory, save_data_directory=save_directory,
+                          seg_channel_label=seg_channel_label, return_probs=True, xy_ds_factor=xy_ds_factor,
                           output_label_name=output_label_name, pretrained_model=pretrained_model, overwrite=overwrite)
