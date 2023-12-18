@@ -118,14 +118,16 @@ def cellpose_segmentation(
     # Task-specific arguments
     seg_channel_label: Optional[str] = None,
     cell_diameter: float = 30,
-    cellprob_threshold: float = 0,
+    cellprob_threshold: float = -4,
     flow_threshold: float = 0.4,
     output_label_name: Optional[str] = None,
     model_type: Literal["nuclei", "cyto", "cyto2"] = "nuclei",
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
     return_probs: Optional[bool] = False,
-    xy_ds_factor: Optional[float] = 1.0
+    xy_ds_factor: Optional[float] = 1.0,
+    # tiff_stack_mode = False,
+    # pixel_res_input = None
 ) -> Dict[str, Any]:
     """
     Run cellpose segmentation on the ROIs of a single OME-NGFF image
@@ -154,9 +156,14 @@ def cellpose_segmentation(
     """
 
     # Read useful parameters from metadata
-    min_size = (cell_diameter/4)**3 / xy_ds_factor**2
+    min_size = 1  # let's be maximally conservative here     # (cell_diameter/4)**3 / xy_ds_factor**2
+
+    # if tiff_stack_mode:
+    #     if pixel_res_input is None:
+    #         raise Exception("User must input pixel resolutions if using tiff stack mode")
 
     raw_directory = os.path.join(root, "raw_data", experiment_date, '')
+    # if tiff
 
     save_directory = os.path.join(root, "built_data", "cellpose_output", experiment_date, '')
     if not os.path.isdir(save_directory):
@@ -183,6 +190,9 @@ def cellpose_segmentation(
         n_wells = len(imObject.scenes)
         well_list = imObject.scenes
         n_time_points = imObject.dims["T"][0]
+
+        # make sure we are not accidentally up-sampling
+        assert xy_ds_factor >= 1.0
 
         # extract key image attributes
         channel_names = imObject.channel_names  # list of channels and relevant info
@@ -287,7 +297,7 @@ def cellpose_segmentation(
                     #image_mask_1 = resize(image_mask, (image_mask.shape[0], shape0[1], shape0[2]), order=0)
                     # if False: #level == 0:
                     #     image_mask_0 = image_mask.copy()
-                    if xy_ds_factor >= 1.0:
+                    if xy_ds_factor > 1.0:
                         image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
                         image_probs_out = resize(image_probs, dims_orig, order=1)
 
@@ -302,7 +312,7 @@ def cellpose_segmentation(
                         prob_name = im_name.replace('.nd2', "_" + experiment_date + f"_well{well_num:03}_t{t:03}_probs")
                         prob_path = os.path.join(save_directory, prob_name)
                         with TiffWriter(prob_path + '.tif', bigtiff=True) as tif:
-                            tif.write(image_probs)
+                            tif.write(image_probs_out)
 
                     # im_name = nd2_path.replace('.zarr', '')
                     # with TiffWriter(im_name + 'tif', bigtiff=True) as tif:
@@ -321,7 +331,7 @@ if __name__ == "__main__":
     model_type = "nuclei"
     output_label_name = "td-Tomato"
     seg_channel_label = "561"
-    xy_ds_factor = 3
+    xy_ds_factor = 2
 
     # set path to CellPose model to use
     pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
