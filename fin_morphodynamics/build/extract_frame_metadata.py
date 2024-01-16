@@ -11,19 +11,27 @@ from aicsimageio import AICSImage
 from typing import Any
 from typing import Dict
 from functions.utilities import path_leaf
+import pandas as pd
+
 import numpy as np
 
-def extract_metadata(
+def extract_frame_metadata(
     *,
     # Fractal arguments
     root: str,
     experiment_date: str,
-    n_tres_frames: int = 10
+    n_tres_frames: int = 10,
+    sheet_names = None
 ) -> Dict[str, Any]:
 
+    if sheet_names is None:
+        sheet_names = ["series_number_map", "genotype", "age"]
+
+    row_letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
+    col_nums = [i for i in range(12)]
 
     raw_directory = os.path.join(root, "raw_data", experiment_date, '')
-    # if tiff
+    plate_directory = os.path.join(root, "metadata", "plate_maps", experiment_date + "_plate_map.xlsx")
 
     save_directory = os.path.join(root, "metadata", "frame_metadata", '')
     if not os.path.isdir(save_directory):
@@ -35,23 +43,35 @@ def extract_metadata(
     if not os.path.isdir(save_directory):
         os.makedirs(save_directory)
 
-    for im in range(len(image_list)):
-        nd2_path = image_list[im]
-        im_name = path_leaf(nd2_path)
+    if len(image_list) > 1:
+        raise Exception("Multiple .nd2 files were found in target directory. Make sure to put fullembryo images into a subdirectory")
 
-        print("processing " + im_name)
+    nd2_path = image_list[0]
+    im_name = path_leaf(nd2_path)
+    well_coord_list = []
+    for row in row_letters:
+        for col in col_nums:
+            well_coord_list.append(row + f"{col:02}")
+    print("processing " + im_name)
 
-        # read the image data
-        imObject = AICSImage(nd2_path)
+    xl_temp = pd.ExcelFile(plate_directory)
 
-        # use first 10 frames to infer time resolution
+    for sheet in sheet_names:
+        sheet_temp = xl_temp.parse(sheet)  # read a specific sheet to DataFrame
+        sheet_ravel = sheet_temp.iloc[0:8, 1:13].values.ravel()
+    well_df["experiment_date"] = date_string
 
-        n_wells = len(imObject.scenes)
-        well_list = imObject.scenes
-        n_time_points = imObject.dims["T"][0]
+    # read the image data
+    imObject = AICSImage(nd2_path)
 
-        # extract key image attributes
-        channel_names = imObject.channel_names  # list of channels and relevant info
+    # use first 10 frames to infer time resolution
+
+    n_wells = len(imObject.scenes)
+    well_list = imObject.scenes
+    n_time_points = imObject.dims["T"][0]
+
+    # extract key image attributes
+    channel_names = imObject.channel_names  # list of channels and relevant info
 
 
     return {}
@@ -65,13 +85,7 @@ if __name__ == "__main__":
     xy_ds_factor = 2
 
     # set path to CellPose model to use
-    pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
-
-    # set read/write paths
-    root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
+    root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
     experiment_date = "20231013"
 
-    cellpose_segmentation(root=root, experiment_date=experiment_date,
-                          # raw_directory=raw_directory, save_data_directory=save_directory,
-                          seg_channel_label=seg_channel_label, return_probs=True, xy_ds_factor=xy_ds_factor,
-                          output_label_name=output_label_name, pretrained_model=pretrained_model, overwrite=overwrite)
+    extract_frame_metadata(root=root, experiment_date=experiment_date)
