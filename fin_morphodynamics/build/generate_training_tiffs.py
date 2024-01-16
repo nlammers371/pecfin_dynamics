@@ -20,15 +20,16 @@ if __name__ == "__main__":
 
     # designate read paths
     raw_data_directory = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
-    date_folder_vec = ["20231214"] #["20231013", "20230913"]
-    xy_ds_factor = 2
-
+    date_folder_vec = ["20231013"] #["20231013", "20230913"]
+    xy_ds_factor = 1
+    edge_buffer_z = 7
+    edge_buffer_xy = int(350/xy_ds_factor)
     for d, date_folder in enumerate(date_folder_vec):
         image_directory = os.path.join(raw_data_directory,  "raw_data", date_folder, '')
 
 
         suffix_vec = ["_xy", "_zx", "_zy"]
-        window_size = 256
+        window_size = 512
         decon_flag = True
         n_samples = 1  # number of samples in xy and zx/zy directions (total num samples per image = 2*n_samples)
         overwrite_flag = False
@@ -94,11 +95,11 @@ if __name__ == "__main__":
 
                     # randomly choose slices along each direction
                     dim_vec = image_data.shape
-                    xy_slice_indices = np.random.choice(range(dim_vec[0]), n_samples, replace=False)
+                    xy_slice_indices = np.random.choice(range(edge_buffer_z, dim_vec[0]-edge_buffer_z), n_samples, replace=False)
                     xy_id_arr = np.zeros(xy_slice_indices.shape)
-                    zx_slice_indices = np.random.choice(range(dim_vec[1]), int(n_samples / 2), replace=False)
+                    zx_slice_indices = np.random.choice(range(edge_buffer_xy, dim_vec[1]-edge_buffer_xy), int(np.ceil(n_samples / 2)), replace=False)
                     zx_id_arr = np.ones(zx_slice_indices.shape)
-                    zy_slice_indices = np.random.choice(range(dim_vec[2]), int(n_samples / 2), replace=False)
+                    zy_slice_indices = np.random.choice(range(edge_buffer_xy, dim_vec[2]-edge_buffer_xy), int(np.ceil(n_samples / 2)), replace=False)
                     zy_id_arr = np.ones(zy_slice_indices.shape) * 2
 
                     # combine and shuffle

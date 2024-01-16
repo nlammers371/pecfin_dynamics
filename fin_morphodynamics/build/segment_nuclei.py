@@ -187,7 +187,7 @@ def cellpose_segmentation(
         print("processing " + im_name)
         # read the image data
         imObject = AICSImage(nd2_path)
-        n_wells = len(imObject.scenes)
+        # n_wells = len(imObject.scenes)
         well_list = imObject.scenes
         n_time_points = imObject.dims["T"][0]
 
@@ -209,13 +209,13 @@ def cellpose_segmentation(
 
         if ind_channel == None:
             raise Exception(f"ERROR: Specified segmentation channel ({len(seg_channel_label)}) was not found in data")
-
-        for well_index in tqdm(range(n_wells)):
+        # well_list = well_list[28:]
+        for well_index in tqdm(range(len(well_list))):
             well_id_string = well_list[well_index]
             well_num = int(well_id_string.replace("XYPos:", ""))
             imObject.set_scene(well_id_string)
 
-            for t in range(n_time_points):
+            for t in reversed(range(n_time_points)):
                 # extract image
                 data_zyx_raw = np.squeeze(imObject.get_image_data("CZYX", T=t))
 
@@ -291,12 +291,6 @@ def cellpose_segmentation(
                         return_probs=return_probs
                     )
 
-                    # shape0 = data_zyx_raw.shape
-                    # print(shape0)
-                    # print(image_mask.shape)
-                    #image_mask_1 = resize(image_mask, (image_mask.shape[0], shape0[1], shape0[2]), order=0)
-                    # if False: #level == 0:
-                    #     image_mask_0 = image_mask.copy()
                     if xy_ds_factor > 1.0:
                         image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
                         image_probs_out = resize(image_probs, dims_orig, order=1)
@@ -306,6 +300,7 @@ def cellpose_segmentation(
                         image_probs_out = image_probs
                     
                     with TiffWriter(label_path + '.tif', bigtiff=True) as tif:
+                        image_mask_out = image_mask_out.astype(np.uint8) # save some disk space
                         tif.write(image_mask_out)
 
                     if return_probs:
@@ -319,7 +314,7 @@ def cellpose_segmentation(
                     #     tif.write(data_zyx)
      
 
-                    logging.info(f"End building pyramids, exit")
+                    logging.info(f"End file save process, exit")
                 else:
                     print("skipping " + label_path)
 
@@ -331,16 +326,15 @@ if __name__ == "__main__":
     model_type = "nuclei"
     output_label_name = "td-Tomato"
     seg_channel_label = "561"
-    xy_ds_factor = 2
+    xy_ds_factor = 1
 
     # set path to CellPose model to use
-    pretrained_model = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\cellpose_models\\nuclei_3D_gen_v1"
+    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_output\\20231013\\CellPoseModel\\tdTom_20231013_v3"
 
     # set read/write paths
     root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
     experiment_date = "20231013"
 
     cellpose_segmentation(root=root, experiment_date=experiment_date,
-                          # raw_directory=raw_directory, save_data_directory=save_directory,
                           seg_channel_label=seg_channel_label, return_probs=True, xy_ds_factor=xy_ds_factor,
                           output_label_name=output_label_name, pretrained_model=pretrained_model, overwrite=overwrite)
