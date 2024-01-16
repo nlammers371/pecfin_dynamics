@@ -12,6 +12,7 @@ from typing import Any
 from typing import Dict
 from functions.utilities import path_leaf
 import pandas as pd
+import nd2
 
 import numpy as np
 
@@ -54,38 +55,43 @@ def extract_frame_metadata(
             well_coord_list.append(row + f"{col:02}")
     print("processing " + im_name)
 
-    xl_temp = pd.ExcelFile(plate_directory)
-
-    for sheet in sheet_names:
-        sheet_temp = xl_temp.parse(sheet)  # read a specific sheet to DataFrame
-        sheet_ravel = sheet_temp.iloc[0:8, 1:13].values.ravel()
-    well_df["experiment_date"] = date_string
+    # xl_temp = pd.ExcelFile(plate_directory)
+    #
+    # for sheet in sheet_names:
+    #     sheet_temp = xl_temp.parse(sheet)  # read a specific sheet to DataFrame
+    #     sheet_ravel = sheet_temp.iloc[0:8, 1:13].values.ravel()
+    # well_df["experiment_date"] = date_string
 
     # read the image data
-    imObject = AICSImage(nd2_path)
-
+    # imObject = AICSImage(nd2_path)
+    f = nd2.ND2File(nd2_path)
+    im_shape = f.shape
+    n_time_points = im_shape[0]
+    n_wells = im_shape[1]
+    n_z_slices = im_shape[2]
     # use first 10 frames to infer time resolution
 
-    n_wells = len(imObject.scenes)
-    well_list = imObject.scenes
-    n_time_points = imObject.dims["T"][0]
-
-    # extract key image attributes
-    channel_names = imObject.channel_names  # list of channels and relevant info
-
+    # extract frame times
+    n_frames_total = f.frame_metadata(0).contents.frameCount
+    frame_time_vec = [f.frame_metadata(i).channels[0].time.relativeTimeMs / 1000 for i in
+                      range(0, n_frames_total, im_shape[2])]
+    # check for common nd2 artifact where time stamps jump midway through
+    dt_frame_approx = (f.frame_metadata(n_z_slices).channels[0].time.relativeTimeMs -
+                       f.frame_metadata(0).channels[0].time.relativeTimeMs) / 1000
+    jump_ind = np.where(np.diff(frame_time_vec) > 2*dt_frame_approx)[0][0] # typically it is multiple orders of magnitude to large
+    # prior to this point we will just use the time stamps. We will extrapolate to get subsequent time points
+    nf = jump_ind - 1 - int(jump_ind/2)
+    dt_frame_est = (frame_time_vec[jump_ind-1] - frame_time_vec[int(jump_ind/2)]) / nf
+    base_time = frame_time_vec[jump_ind-1]
+    for f in range(jump_ind, len(frame_time_vec)):
+        frame_time_vec[f] = base_time + dt_frame_est*(f - jump_ind)
 
     return {}
 
 if __name__ == "__main__":
-    # sert some hyperparameters
-    overwrite = False
-    model_type = "nuclei"
-    output_label_name = "td-Tomato"
-    seg_channel_label = "561"
-    xy_ds_factor = 2
 
     # set path to CellPose model to use
-    root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
+    root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
     experiment_date = "20231013"
 
     extract_frame_metadata(root=root, experiment_date=experiment_date)
