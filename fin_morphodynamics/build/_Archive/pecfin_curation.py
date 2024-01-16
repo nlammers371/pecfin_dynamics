@@ -20,7 +20,6 @@ prob_thresh = -4
 well_ind_list = [0]#, 19] #, 20]
 max_time = 50
 update_flag = True
-# hull_alpha = 8
 
 # load metadata
 ref_image_path = os.path.join(root, "raw_data", date_folder, filename + ".nd2")
