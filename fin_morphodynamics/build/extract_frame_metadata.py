@@ -1,13 +1,6 @@
-"""
-Image segmentation via Cellpose library
-"""
-from tifffile import TiffWriter
 from tqdm import tqdm
-import logging
 import glob2 as glob
 import os
-import time
-from aicsimageio import AICSImage
 from typing import Any
 from typing import Dict
 from functions.utilities import path_leaf
@@ -17,16 +10,13 @@ import nd2
 import numpy as np
 
 def extract_frame_metadata(
-    *,
-    # Fractal arguments
     root: str,
     experiment_date: str,
-    n_tres_frames: int = 10,
     sheet_names = None
 ) -> Dict[str, Any]:
 
     if sheet_names is None:
-        sheet_names = ["series_number_map", "genotype", "age"]
+        sheet_names = ["series_number_map", "genotype", "age_hpf"]
 
     row_letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
     col_nums = [i for i in range(12)]
@@ -55,11 +45,13 @@ def extract_frame_metadata(
             well_coord_list.append(row + f"{col:02}")
     print("processing " + im_name)
 
-    # xl_temp = pd.ExcelFile(plate_directory)
-    #
-    # for sheet in sheet_names:
-    #     sheet_temp = xl_temp.parse(sheet)  # read a specific sheet to DataFrame
-    #     sheet_ravel = sheet_temp.iloc[0:8, 1:13].values.ravel()
+    xl_temp = pd.ExcelFile(plate_directory)
+
+    for sheet in sheet_names:
+        sheet_temp = xl_temp.parse(sheet)  # read a specific sheet to DataFrame
+        sheet_ravel = sheet_temp.iloc[0:8, 1:13].values.ravel()
+
+
     # well_df["experiment_date"] = date_string
 
     # read the image data
