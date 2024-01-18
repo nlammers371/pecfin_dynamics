@@ -9,11 +9,9 @@ import nd2
 import openpyxl
 import numpy as np
 
-def extract_frame_metadata(
-    root: str,
-    experiment_date: str,
-    sheet_names = None
-) -> Dict[str, Any]:
+def parse_plate_metadata(root, experiment_date, sheet_names=None):
+
+    plate_directory = os.path.join(root, "metadata", "plate_maps", experiment_date + "_plate_map.xlsx")
 
     if sheet_names is None:
         sheet_names = ["series_number_map", "genotype_map", "age_hpf"]
@@ -21,34 +19,12 @@ def extract_frame_metadata(
     row_letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
     col_nums = [i for i in range(12)]
 
-    raw_directory = os.path.join(root, "raw_data", experiment_date, '')
-    plate_directory = os.path.join(root, "metadata", "plate_maps", experiment_date + "_plate_map.xlsx")
-
-    save_directory = os.path.join(root, "metadata", "frame_metadata", '')
-    if not os.path.isdir(save_directory):
-        os.makedirs(save_directory)
-
-    # get list of images
-    image_list = sorted(glob.glob(raw_directory + "*.nd2"))
-
-    if not os.path.isdir(save_directory):
-        os.makedirs(save_directory)
-
-    if len(image_list) > 1:
-        raise Exception("Multiple .nd2 files were found in target directory. Make sure to put fullembryo images into a subdirectory")
-
-    nd2_path = image_list[0]
-    im_name = path_leaf(nd2_path)
-
-    ####################
-    # Process information from plate map
     well_coord_list = []
     for row in row_letters:
         for col in col_nums:
             well_coord_list.append(row + f"{col:02}")
 
     well_coord_list = np.asarray(well_coord_list)
-    print("processing " + im_name)
 
     xl_temp = pd.ExcelFile(plate_directory)
     # extract nd2 series info
@@ -70,11 +46,9 @@ def extract_frame_metadata(
     plate_df["genotype"] = genotype_vec
     plate_df["start_age_hpf"] = start_age_hpf
 
-    ####################
-    # Process extract information from nd2 metadata
-    ####################
-    # xyz pixel resolution; xyz stage position; time stamp
-    # read the image data
+    return plate_df
+def parse_nd2_metadata(nd2_path):
+
     imObject = nd2.ND2File(nd2_path)
     im_raw_dask = imObject.to_dask()
     im_shape = im_raw_dask.shape
@@ -116,11 +90,9 @@ def extract_frame_metadata(
     ###################
     # Pull it together into dataframe
     ###################
-    well_df = pd.DataFrame(np.tile(range(1, n_wells+1), n_time_points)[:, np.newaxis], columns=["nd2_series"])
+    well_df = pd.DataFrame(np.tile(range(1, n_wells + 1), n_time_points)[:, np.newaxis], columns=["nd2_series"])
     well_df["time_index"] = np.repeat(range(n_time_points), n_wells)
-
-    # join on plate info using series id
-    well_df = well_df.merge(plate_df, on="nd2_series", how="left")
+    well_df["well_index"] = np.tile(range(n_wells), n_time_points)
 
     # add additional info
     well_df["time"] = frame_time_vec
@@ -132,17 +104,81 @@ def extract_frame_metadata(
     well_df["y_res_um"] = scale_vec[1]
     well_df["z_res_um"] = scale_vec[2]
 
-    ################
-    # Finally, add curation info
+    imObject.close()
+
+    return well_df
+def parse_curation_metadata(root, experiment_date):
     curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.xlsx")
     curation_xl = pd.ExcelFile(curation_path)
     curation_df = curation_xl.parse(curation_xl.sheet_names[0])
-    # read in label files
-    label_dir = os.path.join(root, "built_data", "cellpose_output", )
+    curation_df_long = pd.melt(curation_df,
+                               id_vars=["series_number", "notes", "example_flag", "follow_up_flag", "qual_score"],
+                               var_name="time_string", value_name="qc_flag")
+    time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
+    curation_df_long["time_index"] = time_ind_vec
+    curation_df_long = curation_df_long.rename(columns={"series_number": "nd2_series"})
+
+    return curation_df_long
+
+def extract_frame_metadata(
+    root: str,
+    experiment_date: str,
+    sheet_names = None
+) -> Dict[str, Any]:
+
+
+    raw_directory = os.path.join(root, "raw_data", experiment_date, '')
+
+    save_directory = os.path.join(root, "metadata", "frame_metadata", '')
+    if not os.path.isdir(save_directory):
+        os.makedirs(save_directory)
+
+    # get list of images
+    image_list = sorted(glob.glob(raw_directory + "*.nd2"))
+
+    if not os.path.isdir(save_directory):
+        os.makedirs(save_directory)
+
+    if len(image_list) > 1:
+        raise Exception("Multiple .nd2 files were found in target directory. Make sure to put fullembryo images into a subdirectory")
+
+    nd2_path = image_list[0]
+    im_name = path_leaf(nd2_path)
+    print("processing " + im_name)
+    ####################
+    # Process information from plate map
+    plate_df = parse_plate_metadata(root, experiment_date)
+
+    ####################
+    # Process extract information from nd2 metadata
+    ####################
+    # xyz pixel resolution; xyz stage position; time stamp
+    # read the image data
+
+
+    # join on plate info using series id
+    well_df = parse_nd2_metadata(nd2_path)
+    plate_cols = plate_df.columns
+    well_cols = well_df.columns
+    well_df = well_df.merge(plate_df, on="nd2_series", how="left")
+
+    # reorder columns
+    col_union = plate_cols.tolist() + well_cols.tolist()
+    col_u = []
+    [col_u.append(col) for col in col_union if col not in col_u]
+    well_df = well_df.loc[:, col_u]
+
+    ################
+    # Finally, add curation info
+    curation_df_long = parse_curation_metadata(root, experiment_date)
+    well_df = well_df.merge(curation_df_long, on=["nd2_series", "time_index"], how="left")
+
+    # save
+    well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"))
 
 
 
-    return {}
+    return well_df
 
 if __name__ == "__main__":
 
