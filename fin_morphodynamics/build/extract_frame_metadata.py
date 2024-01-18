@@ -63,28 +63,14 @@ def extract_frame_metadata(
     # well_df["experiment_date"] = date_string
 
     # read the image data
-    # imObject = AICSImage(nd2_path)
-    f = nd2.ND2File(nd2_path)
-    im_shape = f.shape
-    n_time_points = im_shape[0]
-    n_wells = im_shape[1]
-    n_z_slices = im_shape[2]
-    # use first 10 frames to infer time resolution
+    imObject = nd2.ND2File(nd2_path)
+    im_raw_dask = imObject.to_dask()
+    scale_vec = imObject.voxel_size()
 
-    # extract frame times
-    n_frames_total = f.frame_metadata(0).contents.frameCount
-    frame_time_vec = [f.frame_metadata(i).channels[0].time.relativeTimeMs / 1000 for i in
-                      range(0, n_frames_total, im_shape[2])]
-    # check for common nd2 artifact where time stamps jump midway through
-    dt_frame_approx = (f.frame_metadata(n_z_slices).channels[0].time.relativeTimeMs -
-                       f.frame_metadata(0).channels[0].time.relativeTimeMs) / 1000
-    jump_ind = np.where(np.diff(frame_time_vec) > 2*dt_frame_approx)[0][0] # typically it is multiple orders of magnitude to large
-    # prior to this point we will just use the time stamps. We will extrapolate to get subsequent time points
-    nf = jump_ind - 1 - int(jump_ind/2)
-    dt_frame_est = (frame_time_vec[jump_ind-1] - frame_time_vec[int(jump_ind/2)]) / nf
-    base_time = frame_time_vec[jump_ind-1]
-    for f in range(jump_ind, len(frame_time_vec)):
-        frame_time_vec[f] = base_time + dt_frame_est*(f - jump_ind)
+    # read in label files
+    label_dir = os.path.join(root, "built_data", "cellpose_output", )
+
+
 
     return {}
 

@@ -2,10 +2,16 @@ from aicsimageio import AICSImage
 import numpy as np
 import napari
 from skimage.transform import resize
+import glob2 as glob
+import os
 # read the image data
 from ome_zarr.io import parse_url
 
-# full_filename = "E:\\Nick\\Dropbox (Cole Trapnell's Lab)\\Nick\pec_fin_dynamics\\fin_morphodynamics\\raw_data\\20230830\\tdTom_54hpf_pecfin_40x.nd2"
+
+root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
+experiment_date = "20231013"
+
+nd2_list = glob.glob(os.path.join())
 full_filename = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/20230830/tdTom_54hpf_pecfin_40x.nd2"
 imObject = AICSImage(full_filename)
 imObject.set_scene("XYPos:6")
