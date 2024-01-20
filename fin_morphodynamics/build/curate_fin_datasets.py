@@ -8,13 +8,15 @@ import nd2
 from dask_image.imread import imread
 import dask.array as da
 import skimage.io as io
+from tqdm import tqdm
 # read the image data
 from ome_zarr.io import parse_url
 
 # set paths
 root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
 experiment_date = "20231214"
-series_id = 33
+start_id = 30
+stop_id = 60
 
 # read in raw datafile
 nd2_list = glob.glob(os.path.join(root, "raw_data", experiment_date, "*.nd2"))
@@ -27,7 +29,7 @@ shape_raw = im_raw_dask.shape
 scale_vec = imObject.voxel_size()
 # scale_vec_plot = tuple([1, 1]) + scale_vec[::-1]
 
-scale_vec_plot = tuple([1]) + scale_vec[::-1]
+scale_vec_plot = tuple([1, 1]) + scale_vec[::-1]
 # read in label files
 prob_dir = os.path.join(root, "built_data", "cellpose_output", experiment_date, "")
 
@@ -38,7 +40,11 @@ prob_dir = os.path.join(root, "built_data", "cellpose_output", experiment_date, 
 # viewer = napari.view_image(im_prob_dask,  scale=scale_vec_plot, contrast_limits=[-8, 16])
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 
-while series_id < shape_raw[1]:
+print("Loading prob data stacks")
+stop_id = np.min([stop_id, shape_raw[1]])
+prob_stack = np.empty((stop_id-start_id, shape_raw[0], shape_raw[2], shape_raw[3], shape_raw[4]), dtype=np.float32)
+iter_i = 0
+for series_id in tqdm(range(start_id, stop_id)):
 
     prob_files = sorted(glob.glob(prob_dir + f"*well{series_id:03}*_probs.tif"))
     prob_list = []
@@ -46,15 +52,16 @@ while series_id < shape_raw[1]:
         im_temp = io.imread(pf)
         prob_list.append(im_temp[np.newaxis, :, :, :])
 
-    prob_stack = np.concatenate(tuple(prob_list), axis=0)
+    prob_stack_temp = np.concatenate(tuple(prob_list), axis=0)
 
-    print(f"Current series ID: {series_id}")
+    prob_stack[iter_i, :, :, :, :] = prob_stack_temp
+    iter_i += 1
 
-    viewer = napari.view_image(prob_stack, scale=scale_vec_plot, contrast_limits=[-8, 32])
 
-    napari.run()
+viewer = napari.view_image(prob_stack, scale=scale_vec_plot, contrast_limits=[-8, 32])
 
-    series_id += 1
+napari.run()
+    # print(f"Current series ID: {series_id}")
 
 # if __name__ == '__main__':
 #     napari.run()

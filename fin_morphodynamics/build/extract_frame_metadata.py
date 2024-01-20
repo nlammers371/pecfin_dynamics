@@ -112,13 +112,13 @@ def parse_curation_metadata(root, experiment_date):
     curation_xl = pd.ExcelFile(curation_path)
     curation_df = curation_xl.parse(curation_xl.sheet_names[0])
     curation_df_long = pd.melt(curation_df,
-                               id_vars=["series_number", "notes", "example_flag", "follow_up_flag", "qual_score"],
+                               id_vars=["series_number", "notes", "example_flag", "follow_up_flag"],
                                var_name="time_string", value_name="qc_flag")
     time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
     curation_df_long["time_index"] = time_ind_vec
     curation_df_long = curation_df_long.rename(columns={"series_number": "nd2_series"})
 
-    return curation_df_long
+    return curation_df_long, curation_df
 
 def extract_frame_metadata(
     root: str,
@@ -170,8 +170,9 @@ def extract_frame_metadata(
 
     ################
     # Finally, add curation info
-    curation_df_long = parse_curation_metadata(root, experiment_date)
+    curation_df_long, curation_df_wide = parse_curation_metadata(root, experiment_date)
     well_df = well_df.merge(curation_df_long, on=["nd2_series", "time_index"], how="left")
+    well_df["estimated_stage_hpf"] = well_df["start_age_hpf"] + well_df["time"]/3600
 
     # save
     well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"))
