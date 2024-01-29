@@ -178,7 +178,6 @@ def extract_frame_metadata(
     well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"))
 
 
-
     return well_df
 
 if __name__ == "__main__":

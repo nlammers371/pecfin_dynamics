@@ -2,6 +2,12 @@ from aicsimageio import AICSImage
 import numpy as np
 import napari
 import os
+
+default_n_threads = 16
+os.environ['OPENBLAS_NUM_THREADS'] = f"{default_n_threads}"
+os.environ['MKL_NUM_THREADS'] = f"{default_n_threads}"
+os.environ['OMP_NUM_THREADS'] = f"{default_n_threads}"
+
 from glob2 import glob
 import skimage.io as io
 from alphashape import alphashape
@@ -9,7 +15,7 @@ from functions.utilities import path_leaf
 from skimage.transform import resize
 import pandas as pd
 from tqdm import tqdm
-from sklearn.cluster import MiniBatchKMeans as MiniKMeans
+from sklearn.cluster import MiniBatchKMeans as MiniKMeans, KMeans
 # import open3d as o3d
 
 
@@ -35,55 +41,78 @@ def extract_nucleus_stats_prob(prob_data, prob_thresh=-4.0): #, voxel_res=2):
 
     return zyx_out
 
-# root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
-root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
-experiment_date = "20231214"
-prob_thresh = -8
-n_points = 4096
-# load metadata
-metadata_path = os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv")
-metadata_df = pd.read_csv(metadata_path, index_col=0)
+def make_fin_point_clouds(root, experiment_date, prob_thresh, n_points):
 
-# git list of prob files produced by CellPose
-prob_file_dir = os.path.join(root, "built_data", "cellpose_output", experiment_date, "")
-prob_file_list = glob(prob_file_dir + "*probs*")
-prob_file_list = [file for file in prob_file_list if "full_embryo" not in file]
-prob_file_list = [file for file in prob_file_list if "whole_embryo" not in file]
+    # load metadata
+    metadata_path = os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv")
+    metadata_df = pd.read_csv(metadata_path, index_col=0)
 
-# make directory for saving fin masks
-fin_point_dir = os.path.join(root, "built_date", "")
+    # git list of prob files produced by CellPose
+    prob_file_dir = os.path.join(root, "built_data", "cellpose_output", experiment_date, "")
+    prob_file_list = glob(prob_file_dir + "*probs*")
+    prob_file_list = [file for file in prob_file_list if "full_embryo" not in file]
+    prob_file_list = [file for file in prob_file_list if "whole_embryo" not in file]
+
+    pixel_res_vec = metadata_df.loc[0, ["z_res_um", "y_res_um", "x_res_um"]].to_numpy().astype(np.float32)
+    # make directory for saving fin masks
+    fin_point_dir = os.path.join(root, "built_data", "point_clouds", experiment_date)
+    if not os.path.isdir(fin_point_dir):
+        os.makedirs(fin_point_dir)
+    # determine how many unique embryos and time points we have
+    # df_list = []
+    for p, prob_name in enumerate(tqdm(prob_file_list)):
+        prob_name_short = path_leaf(prob_name)
+
+        # generate save name
+        date_ind = prob_name_short.find(experiment_date)
+        save_name = prob_name_short[date_ind:].replace(".tif", ".csv")
+
+        if (not os.path.isfile(os.path.join(fin_point_dir, save_name))) | overwrite_flag:
+            # well number
+            well_ind = prob_name_short.find("well")
+            well_num = int(prob_name_short[well_ind + 4:well_ind + 7])
+
+            # time step index
+            time_ind = int(prob_name_short[well_ind + 9:well_ind + 12])
 
 
-# determine how many unique embryos and time points we have
-well_id_vec = []
-time_id_vec = []
-for p, prob_name in enumerate(tqdm(prob_file_list)):
-    prob_name_short = path_leaf(prob_name)
+            # load the image
+            im_prob = io.imread(prob_name, plugin="tifffile")
+            # label_name = prob_name.replace("probs", "labels")
+            # im_label = io.imread(label_name, plugin="tifffile")
+            # obtain point cloud
+            zyx_full = extract_nucleus_stats_prob(im_prob, prob_thresh=prob_thresh)
+            zyx_full_scaled = np.multiply(zyx_full, pixel_res_vec)
+            zyx_full_scaled = zyx_full_scaled.astype(np.float32)
 
-    # well number
-    well_ind = prob_name_short.find("well")
-    well_num = int(prob_name_short[well_ind + 4:well_ind + 7])
-    well_id_vec.append(well_num)
+            # use kmeans clustering to downsample the point cloud
+            k_clusters = MiniKMeans(n_clusters=n_points, batch_size=10000, n_init='auto').fit(zyx_full_scaled)
+            # k_clusters = KMeans(n_clusters=n_points, random_state=0, n_init="auto").fit(zyx_full_scaled)
+            ############
+            # store results in a pandas dataframe
+            point_df = pd.DataFrame(k_clusters.cluster_centers_, columns=["Z", "Y", "X"])
+            point_df["prob_thresh"] = prob_thresh
+            point_df["experiment_date"] = experiment_date
+            point_df["time_id"] = time_ind
+            point_df["well_id"] = well_num
+            point_df = point_df.iloc[:, ::-1]
 
-    # time step index
-    time_ind = int(prob_name_short[well_ind + 9:well_ind + 12])
-    time_id_vec.append(time_ind)
+            # save
+            point_df.to_csv(os.path.join(fin_point_dir, save_name))
 
-    # load the image
-    im_prob = io.imread(prob_name, plugin="tifffile")
+        else:
+            print(F"Skipping {prob_name_short}...")
 
-    # obtain point cloud
-    zyx_full = extract_nucleus_stats_prob(im_prob, prob_thresh=prob_thresh)
+    return {}
 
-    k_clusters = MiniKMeans(n_clusters=n_points)
-    ############
-    # use kmeans clustering to downsample the point cloud
-    # point_name = prob_name_short.replace("probs.tif", "fin_mask_points.npy")
-    # point_path = os.path.join(fin_mask_dir, point_name)
+if __name__ == '__main__':
 
-    # well number
-    well_ind = prob_name.find("well")
+    # root = "/Users/nick/Dropbox (Cole Trapnell's Lab)/Nick/pecfin_dynamics/fin_morphodynamics/"
+    root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
+    experiment_date = "20231214"
+    prob_thresh = -8
+    n_points = 4096
+    overwrite_flag = False
 
-# # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
-# if __name__ == '__main__':
-#     napari.run()
+    make_fin_point_clouds(root, experiment_date, prob_thresh, n_points)
+
