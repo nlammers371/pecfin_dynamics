@@ -86,7 +86,7 @@ def make_fin_point_clouds(root, experiment_date, prob_thresh, n_points):
             zyx_full_scaled = zyx_full_scaled.astype(np.float32)
 
             # use kmeans clustering to downsample the point cloud
-            k_clusters = MiniKMeans(n_clusters=n_points, batch_size=10000, n_init='auto').fit(zyx_full_scaled)
+            k_clusters = MiniKMeans(n_clusters=n_points, batch_size=1024, n_init='auto').fit(zyx_full_scaled)
             # k_clusters = KMeans(n_clusters=n_points, random_state=0, n_init="auto").fit(zyx_full_scaled)
             ############
             # store results in a pandas dataframe
