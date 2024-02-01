@@ -86,19 +86,23 @@ def make_fin_point_clouds(root, experiment_date, prob_thresh, n_points):
             zyx_full_scaled = zyx_full_scaled.astype(np.float32)
 
             # use kmeans clustering to downsample the point cloud
-            k_clusters = MiniKMeans(n_clusters=n_points, batch_size=1024, n_init='auto').fit(zyx_full_scaled)
-            # k_clusters = KMeans(n_clusters=n_points, random_state=0, n_init="auto").fit(zyx_full_scaled)
-            ############
-            # store results in a pandas dataframe
-            point_df = pd.DataFrame(k_clusters.cluster_centers_, columns=["Z", "Y", "X"])
-            point_df["prob_thresh"] = prob_thresh
-            point_df["experiment_date"] = experiment_date
-            point_df["time_id"] = time_ind
-            point_df["well_id"] = well_num
-            point_df = point_df.iloc[:, ::-1]
+            if zyx_full_scaled.shape[0] >= n_points:
+                k_clusters = MiniKMeans(n_clusters=n_points, batch_size=1024, n_init='auto').fit(zyx_full_scaled)
 
-            # save
-            point_df.to_csv(os.path.join(fin_point_dir, save_name))
+                # k_clusters = KMeans(n_clusters=n_points, random_state=0, n_init="auto").fit(zyx_full_scaled)
+                ############
+                # store results in a pandas dataframe
+                point_df = pd.DataFrame(k_clusters.cluster_centers_, columns=["Z", "Y", "X"])
+                point_df["prob_thresh"] = prob_thresh
+                point_df["experiment_date"] = experiment_date
+                point_df["time_id"] = time_ind
+                point_df["well_id"] = well_num
+                point_df = point_df.iloc[:, ::-1]
+
+                # save
+                point_df.to_csv(os.path.join(fin_point_dir, save_name))
+            else:
+                pass
 
         else:
             print(F"Skipping {prob_name_short}...")

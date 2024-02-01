@@ -19,45 +19,38 @@ def on_points_click(layer, event):
                                          dims_displayed=event.dims_displayed)
         if selected_index is not None:
             layer_features = layer.features.copy()
-            layer_features.iloc[selected_index, 0] = ~layer.features.iloc[selected_index, 0]
+            new_val = ~layer.features.iloc[selected_index, 0]
+            layer_features.iloc[selected_index, 0] = new_val
             layer.features = layer_features
+
+
+            if not new_val:
+                point_features = point_layer.features.copy()
+                point_features.iloc[selected_index, 0] = 0
+                point_layer.features = point_features
+            elif layer.name == 'outlier points':
+                point_features = point_layer.features.copy()
+                point_features.iloc[selected_index, 0] = 1
+                point_layer.features = point_features
+            elif layer.name == 'fin points':
+                point_features = point_layer.features.copy()
+                point_features.iloc[selected_index, 0] = 2
+                point_layer.features = point_features
+            elif layer.name == 'yolk points':
+                point_features = point_layer.features.copy()
+                point_features.iloc[selected_index, 0] = 3
+                point_layer.features = point_features
+            elif layer.name == 'body points':
+                point_features = point_layer.features.copy()
+                point_features.iloc[selected_index, 0] = 4
+                point_layer.features = point_features
+
         else:
-            tp = np.array(event.position)
-            ld = layer._view_data
-            distances = np.sqrt(np.sum((tp-ld)**2, axis=1))
-            selected_index = np.argmin(distances)
+            pass
 
-            layer_features = layer.features.copy()
-            layer_features.iloc[selected_index, 0] = ~layer.features.iloc[selected_index, 0]
-            layer.features = layer_features
 
-        # if layer.name == 'outlier points':
-        #     selected_index = layer.get_value(event.position, world=True)
-        #     print("outlier")
-        # elif layer.name == 'fin points':
-        #     selected_index = layer.get_value(event.position, world=True)
-        #     print("fin")
-        # elif layer.name == 'yolk points':
-        #     point_data = event.source.data
-        #     print("yolk")
-        # elif layer.name == 'body points':
-        #     point_data = event.source.data
-        #     print("body")
         return
 
-def event_trigger(event):
-    if event.source.name == 'outlier points':
-        point_data = event.source.data
-        print("outlier")
-    elif event.source.name == 'fin points':
-        point_data = event.source.data
-        print("fin")
-    elif event.source.name == 'yolk points':
-        point_data = event.source.data
-        print("yolk")
-    elif event.source.name == 'body points':
-        point_data = event.source.data
-        print("body")
 
 # 
 # def calculate_fin_hull(point_data, hull_alpha=4):
@@ -145,7 +138,7 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False):
         if len(point_cloud_options) > 1:
             raise Exception("Found multiple files with same well and time index.")
         point_df = pd.read_csv(point_cloud_options[0], index_col=0)
-        if "fin_label" not in point_df.columns:
+        if "fin_label_cur" not in point_df.columns:
             point_df["fin_label_cur"] = -1
 
         # load probability map from cellpose
@@ -156,48 +149,54 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False):
 
         # generate temporary DF to keep track of curation labels
         curation_df = pd.DataFrame(point_df.loc[:, "fin_label_cur"].copy())
+
+
         # 0=outlier, 1=fin, 2=yolk, 3=body
         curation_df["outlier_flags"] = curation_df["fin_label_cur"] == 0
         curation_df["fin_flags"] = curation_df["fin_label_cur"] == 1
         curation_df["yolk_flags"] = curation_df["fin_label_cur"] == 2
         curation_df["body_flags"] = curation_df["fin_label_cur"] == 3
 
+        curation_df.loc[:, "fin_label_cur"] += 1  # for labeling convenience
+
         # set colormap
         label_color_cycle = ["white", "gray", "green", "red", "blue"]
 
+        global point_layer
+
         # initialize viewer
-        viewer = napari.Viewer()#napari.view_image(im_prob, colormap="gray", scale=scale_vec,
-                                   #contrast_limits=(point_df.loc[0, "prob_thresh"], np.percentile(im_prob, 99.8)))
+        viewer = napari.view_image(im_prob, colormap="gray", scale=scale_vec,
+                                   contrast_limits=(point_df.loc[0, "prob_thresh"], np.percentile(im_prob, 99.8)))
 
         # # generate master point array to integrate results
-        # point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
-        #                                 size=4, features=curation_df.loc[:, "fin_label_cur"], face_color="fin_label_cur",
-        #                                 face_color_cycle=label_color_cycle, visible=True)
+        point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
+                                        size=4, features=curation_df.loc[:, "fin_label_cur"], face_color="fin_label_cur",
+                                        face_color_cycle=label_color_cycle, visible=True)
 
         outlier_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='outlier points',
                                         size=4, features=curation_df.loc[:, "outlier_flags"], face_color="outlier_flags",
                                         face_color_cycle=label_color_cycle[:2], visible=False)
 
-        # fin_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='fin points',
-        #                                   size=4, features=curation_df.loc[:, "fin_flags"],
-        #                                   face_color="fin_flags",
-        #                                   face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[2]], visible=False)
-        #
-        # yolk_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='yolk points',
-        #                               size=4, features=curation_df.loc[:, "yolk_flags"],
-        #                               face_color="yolk_flags",
-        #                               face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[3]], visible=False)
-        #
-        # body_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='body points',
-        #                                size=4, features=curation_df.loc[:, "body_flags"],
-        #                                face_color="body_flags",
-        #                                face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[4]], visible=False)
+        fin_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='fin points',
+                                          size=4, features=curation_df.loc[:, "fin_flags"],
+                                          face_color="fin_flags",
+                                          face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[2]], visible=False)
+
+        yolk_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='yolk points',
+                                      size=4, features=curation_df.loc[:, "yolk_flags"],
+                                      face_color="yolk_flags",
+                                      face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[3]], visible=False)
+
+        body_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='body points',
+                                       size=4, features=curation_df.loc[:, "body_flags"],
+                                       face_color="body_flags",
+                                       face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[4]], visible=False)
 
         # connect to event trigger function
         outlier_layer.mouse_drag_callbacks.append(on_points_click)
-        # fin_layer.mouse_click_callbacks.append(on_points_click)
-        # yolk_layer.mouse_click_callbacks.append(on_points_click)
-        # body_layer.mouse_click_callbacks.append(on_points_click)
+        fin_layer.mouse_drag_callbacks.append(on_points_click)
+        yolk_layer.mouse_drag_callbacks.append(on_points_click)
+        body_layer.mouse_drag_callbacks.append(on_points_click)
 
         # # initialize points layer
         # if os.path.isfile(point_path):
@@ -217,9 +216,9 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False):
 
         napari.run()
 
-        # points_layer = viewer.layers["fin hull points"]
-        # label_array = np.asarray(viewer.layers["labels"].data)
-
+        print("Saving...")
+        point_df.loc[:, "fin_label_cur"] = point_layer.features.copy() - 1
+        point_df.to_csv(point_cloud_options[0])
 
 
         wait = input(
