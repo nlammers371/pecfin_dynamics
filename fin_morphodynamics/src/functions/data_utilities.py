@@ -46,9 +46,11 @@ class PointData(Dataset):
     def __getitem__(self, idx):
         # read data from hdf5
         space_data = pd.read_csv(self.data_paths[idx], index_col=0)
-        points = space_data.loc[:, ["X", "Y", "Y"]].to_numpy()  # xyz points
-        targets = space_data.loc[:, "fin_label_cur"]  # integer categories
-
+        points = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
+        if "fin_label_cur" in space_data.columns:# xyz points
+            targets = space_data.loc[:, "fin_label_cur"]  # integer categories
+        else:
+            targets = -1*np.ones((points.shape[0], 1))
         # down sample point cloud
         if self.npoints:
             points, targets = self.downsample(points, targets)
