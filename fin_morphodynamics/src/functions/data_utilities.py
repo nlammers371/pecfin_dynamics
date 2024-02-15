@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-
+from pythae.data.datasets import DatasetOutput
 
 class PointData(Dataset):
     def __init__(self, root, split='train', npoints=4096, r_prob=0.25):
@@ -46,15 +46,15 @@ class PointData(Dataset):
     def __getitem__(self, idx):
         # read data from hdf5
         space_data = pd.read_csv(self.data_paths[idx], index_col=0)
-        points = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
+        points_raw = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
         if "fin_label_cur" in space_data.columns:# xyz points
-            targets = space_data.loc[:, "fin_label_cur"]  # integer categories
+            targets = np.reshape(space_data.loc[:, "fin_label_cur"].to_numpy(), (points_raw.shape[0], 1))  # integer categories
         else:
-            targets = -1*np.ones((points.shape[0], 1))
+            targets = -1*np.ones((points_raw.shape[0], 1))
         # down sample point cloud
-        if self.npoints:
-            points, targets = self.downsample(points, targets)
-
+        # if self.npoints:
+        points, targets, indices = self.downsample(points_raw, targets)
+        points_raw = points_raw[indices]
         # add Gaussian noise to point set if not testing
         if self.split != 'test':
             # add N(0, 1/100) noise
@@ -71,7 +71,10 @@ class PointData(Dataset):
         points = torch.from_numpy(points).type(torch.float32)
         targets = torch.from_numpy(targets).type(torch.LongTensor)
 
-        return points, targets
+        out = DatasetOutput(data=points, label=targets, path=self.data_paths[idx], point_indices=indices, raw_data=points_raw)
+
+        return out
+
 
     def get_random_partitioned_space(self):
         ''' Obtains a Random space. In this case the batchsize would be
@@ -116,7 +119,7 @@ class PointData(Dataset):
         return points, targets
 
     def downsample(self, points, targets):
-        if len(points) > self.npoints:
+        if len(points) >= self.npoints:
             choice = np.random.choice(len(points), self.npoints, replace=False)
         else:
             # case when there are less points than the desired number
@@ -124,7 +127,7 @@ class PointData(Dataset):
         points = points[choice, :]
         targets = targets[choice]
 
-        return points, targets
+        return points, targets, choice
 
     @staticmethod
     def random_rotate(points):
