@@ -9,7 +9,7 @@ import pandas as pd
 from joblib import dump, load
 from sklearn.neural_network import MLPClassifier
 import time
-
+import vispy.color
 
 
 def on_points_click(layer, event):
@@ -33,25 +33,25 @@ def on_points_click(layer, event):
                 point_layer.features = point_features
             elif layer.name == 'outlier points':
                 point_features = point_layer.features.copy()
-                point_features.iloc[selected_index, 0] = 1
+                point_features.iloc[selected_index, 0] = 1/4
                 point_layer.features = point_features
             elif layer.name == 'fin points':
                 point_features = point_layer.features.copy()
-                point_features.iloc[selected_index, 0] = 2
+                point_features.iloc[selected_index, 0] = 2/4
                 point_layer.features = point_features
             elif layer.name == 'yolk points':
                 point_features = point_layer.features.copy()
-                point_features.iloc[selected_index, 0] = 3
+                point_features.iloc[selected_index, 0] = 3/4
                 point_layer.features = point_features
             elif layer.name == 'body points':
                 point_features = point_layer.features.copy()
-                point_features.iloc[selected_index, 0] = 4
+                point_features.iloc[selected_index, 0] = 4/4
                 point_layer.features = point_features
 
 
             # update data frames
             start = time.time()
-            point_df.loc[:, "fin_label_cur"] = point_layer.features.copy() - 1
+            point_df.loc[:, "fin_label_cur"] = ((point_layer.features.copy()*4) - 1).to_numpy().astype(int)
 
             train_df_temp = point_df.loc[point_df["fin_label_cur"] != -1]
             train_df_temp.loc[:, "well_index"] = well_index
@@ -78,9 +78,10 @@ def on_points_click(layer, event):
             # pd_features = pd_layer.features.copy()
             # pd_features = Y_pd + 1
             pd_features = pd_layer.features.copy()
-            pd_features.iloc[:, 0] = Y_pd + 1
+            pd_features.iloc[:, 0] = (Y_pd + 1)/4
             pd_layer.features = pd_features
 
+            # print(pd_layer.features.head(4))
             # pd_layer.loc[:, "fin_label_pd"] = Y_pd.copy()
         else:
             pass
@@ -134,7 +135,13 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False, n_mlp_nodes=500
     else:
         well_id_list = metadata_df.loc[:, "well_index"]
         time_id_list = metadata_df.loc[:, "time_index"]
-    
+
+    # define colormaps
+    lb_colormap = vispy.color.Colormap(["white", "gray", "green", "red", "blue"], interpolation='zero',
+                                       controls=[0, 0.125, 0.375, .625, .875, 1.0])
+
+
+    #
     image_i = 0
 
     while image_i < len(well_id_list):
@@ -166,7 +173,7 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False, n_mlp_nodes=500
 
         # generate temporary DF to keep track of curation labels
         curation_df = pd.DataFrame(point_df.loc[:, "fin_label_cur"].copy())
-        curation_df["fin_label_pd"] = -1
+        curation_df["fin_label_pd"] = 0
         # 0=outlier, 1=fin, 2=yolk, 3=body
         curation_df["outlier_flags"] = curation_df["fin_label_cur"] == 0
         curation_df["fin_flags"] = curation_df["fin_label_cur"] == 1
@@ -195,11 +202,13 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False, n_mlp_nodes=500
         viewer = napari.view_image(im_prob, colormap="gray", scale=scale_vec,
                                    contrast_limits=(point_df.loc[0, "prob_thresh"], np.percentile(im_prob, 99.8)))
 
-
+        curation_df.loc[:, "fin_label_cur"] = curation_df.loc[:, "fin_label_cur"]/4
+        curation_df.loc[:, "fin_label_pd"] = curation_df.loc[:, "fin_label_cur"].copy()
         # # generate master point array to integrate results
         point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
                                         size=4, features=curation_df.loc[:, "fin_label_cur"], face_color="fin_label_cur",
-                                        face_color_cycle=label_color_cycle, visible=True)
+                                        face_colormap=lb_colormap, visible=True)
+
 
         outlier_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='outlier points',
                                         size=4, features=curation_df.loc[:, "outlier_flags"], face_color="outlier_flags",
@@ -220,10 +229,22 @@ def curate_pec_fins(root, experiment_date, overwrite_flag=False, n_mlp_nodes=500
                                        face_color="body_flags",
                                        face_color_cycle=[label_color_cycle[0]] + [label_color_cycle[4]], visible=False)
 
-        pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='predictions',
-                                        size=4, features=curation_df.loc[:, "fin_label_pd"],
-                                        face_color="fin_label_pd", opacity=0.7,
-                                        face_color_cycle=label_color_cycle, visible=True)
+        pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='prediction',
+                                     size=4, features=curation_df.loc[:, "fin_label_pd"],
+                                     face_color="fin_label_pd",
+                                     face_colormap=lb_colormap, visible=True)
+
+        # pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='predictions',
+        #                                 size=4, features=curation_df.loc[:, "fin_label_pd"],
+        #                                 face_color="fin_label_pd", opacity=0.7, visible=True)
+        #
+        # pd_layer.face_color_cycle_map = {
+        #     0: "gray",
+        #     1: "green",
+        #     2: "red",
+        #     3: "blue"
+        # }
+        # pd_layer.refresh_colors()
 
         # connect to event trigger function
         outlier_layer.mouse_drag_callbacks.append(on_points_click)
