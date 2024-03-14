@@ -122,8 +122,7 @@ def parse_curation_metadata(root, experiment_date):
 
 def extract_frame_metadata(
     root: str,
-    experiment_date: str,
-    sheet_names = None
+    experiment_date: str
 ) -> Dict[str, Any]:
 
 
@@ -177,13 +176,12 @@ def extract_frame_metadata(
     # save
     well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"))
 
-
     return well_df
 
 if __name__ == "__main__":
 
     # set path to CellPose model to use
     root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
-    experiment_date = "20231214"
+    experiment_date = "20240223"
 
     extract_frame_metadata(root=root, experiment_date=experiment_date)
