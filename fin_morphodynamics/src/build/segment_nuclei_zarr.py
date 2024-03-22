@@ -7,7 +7,9 @@ import logging
 import glob2 as glob
 import os
 import time
-from aicsimageio import AICSImage
+import SimpleITK as sitk
+# import pyclesperanto as cle
+import skimage as ski
 from typing import Any
 from typing import Dict
 from typing import Literal
@@ -24,13 +26,45 @@ import zarr
 logging.basicConfig(level=logging.NOTSET)
 # __OME_NGFF_VERSION__ = fractal_tasks_core.__OME_NGFF_VERSION__
 
+def process_raw_image(data_zyx, scale_vec):
+    # estimate background using blur
+    top1 = np.percentile(data_zyx, 99)
+    data_capped = data_zyx.copy()
+    data_capped[data_capped > top1] = top1
+    # data_capped = data_capped[:, 500:775, 130:475]
 
+    shape_orig = np.asarray(data_capped.shape)
+    shape_iso = shape_orig.copy()
+    iso_factor = scale_vec[0] / scale_vec[1]
+    shape_iso[0] = shape_iso[0] * iso_factor
+
+    gaussian_background = ski.filters.gaussian(data_capped, sigma=(2, 8, 8))
+    data_1 = np.divide(data_capped, gaussian_background)
+    # data_sobel = ski.filters.sobel(data_1)
+    # data_sobel_i = ski.util.invert(data_sobel)
+
+    data_rs = resize(data_1, shape_iso, preserve_range=True, order=1)
+    image = sitk.GetImageFromArray(data_rs)
+    data_log = sitk.GetArrayFromImage(sitk.LaplacianRecursiveGaussian(image, sigma=1))
+    data_log_i = resize(ski.util.invert(data_log), shape_orig, preserve_range=True, order=1)
+    # data_log_i = ski.util.invert(data_log)
+
+    # rescale and convert to 16 bit
+    data_bkg_16 = data_1.copy()
+    data_bkg_16 = data_bkg_16 - np.min(data_bkg_16)
+    data_bkg_16 = np.round(data_bkg_16 / np.max(data_bkg_16) * 2 ** 16 - 1).astype(np.uint16)
+
+    log_i_16 = data_log_i.copy()
+    log_i_16 = log_i_16 - np.min(log_i_16)
+    log_i_16 = np.round(log_i_16 / np.max(log_i_16) * 2 ** 16 - 1).astype(np.uint16)
+    
+    return log_i_16, data_bkg_16
 def segment_FOV(
     column: np.ndarray,
     model=None,
     do_3D: bool = True,
     anisotropy=None,
-    diameter: float = 30,
+    diameter: float = 15,
     cellprob_threshold: float = 0.0,
     flow_threshold: float = 0.4,
     min_size=None,
@@ -160,7 +194,7 @@ def cellpose_segmentation(
     """
 
     # Read useful parameters from metadata
-    min_size = 1  # let's be maximally conservative here     # (cell_diameter/4)**3 / xy_ds_factor**2
+    min_size = 5  # let's be conservative here     # (cell_diameter/4)**3 / xy_ds_factor**2
 
     # if tiff_stack_mode:
     if pixel_res_raw is None:
@@ -169,7 +203,8 @@ def cellpose_segmentation(
     # path to zarr files
     data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
 
-    save_directory = os.path.join(root, "built_data", "cellpose_output", experiment_date, '')
+    model_name = path_leaf(pretrained_model)
+    save_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     if not os.path.isdir(save_directory):
         os.makedirs(save_directory)
         
@@ -182,18 +217,16 @@ def cellpose_segmentation(
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
 
-    if not os.path.isdir(save_directory):
-        os.makedirs(save_directory)
 
-    for well_index in range(2, len(image_list)):
+    for well_index in [2]: #range(12, len(image_list)):
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
         print("processing " + im_name)
         # read the image data
-        data_tzyx = zarr.open(zarr_path, mode="r")
+        data_zyx = zarr.open(zarr_path, mode="r")
         # n_wells = len(imObject.scenes)
         # well_list = imObject.scenes
-        n_time_points = data_tzyx.shape[0]
+        n_time_points = data_zyx.shape[0]
 
         # make sure we are not accidentally up-sampling
         assert xy_ds_factor >= 1.0
@@ -219,10 +252,10 @@ def cellpose_segmentation(
         # well_index = int(well_id_string.replace("XYPos:", ""))
         # imObject.set_scene(well_id_string)
 
-        for t in reversed(range(n_time_points)):
+        for t in [n_time_points-1]: #reversed(range(n_time_points)):
 
             # extract image
-            data_zyx_raw = data_tzyx[t]
+            data_zyx_raw = data_zyx[t]
 
             # rescale data
             dims_orig = data_zyx_raw.shape
@@ -232,6 +265,9 @@ def cellpose_segmentation(
             else:
                 dims_new = dims_orig
                 data_zyx = data_zyx_raw.copy()
+
+            im_log, im_bkg = process_raw_image(data_zyx=data_zyx, scale_vec=pixel_res_raw)
+            data_zyx = im_log
 
             anisotropy = anisotropy_raw * dims_new[1] / dims_orig[1]
 
@@ -336,13 +372,17 @@ if __name__ == "__main__":
     output_label_name = "td-Tomato"
     seg_channel_label = "561"
     xy_ds_factor = 1
+    cell_diameter = 8
+    cellprob_threshold = 0.0
     pixel_res_raw = [2, 0.55, 0.55]
     # set path to CellPose model to use
-    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\raw_data\\cellpose_training_slices\\20240223\\models\\tdTom-20x-v1-20240313"
+    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\log\\models\\log-v3"
 
     # set read/write paths
     root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
     experiment_date = "20240223"
 
-    cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw, return_probs=True, xy_ds_factor=xy_ds_factor,
+    cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw,
+                          return_probs=True, xy_ds_factor=xy_ds_factor, cell_diameter=cell_diameter,
+                          cellprob_threshold=cellprob_threshold,
                           output_label_name=output_label_name, pretrained_model=pretrained_model, overwrite=overwrite)
