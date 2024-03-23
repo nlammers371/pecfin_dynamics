@@ -267,7 +267,11 @@ def cellpose_segmentation(
                 data_zyx = data_zyx_raw.copy()
 
             im_log, im_bkg = process_raw_image(data_zyx=data_zyx, scale_vec=pixel_res_raw)
-            data_zyx = im_log
+            if "log" in model_name:
+                data_zyx = im_log
+            elif "bkg" in model_name:
+                print("bkg")
+                data_zyx = im_bkg
 
             anisotropy = anisotropy_raw * dims_new[1] / dims_orig[1]
 
@@ -376,7 +380,7 @@ if __name__ == "__main__":
     cellprob_threshold = 0.0
     pixel_res_raw = [2, 0.55, 0.55]
     # set path to CellPose model to use
-    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\log\\models\\log-v3"
+    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\bk\\models\\bkg-v2"
 
     # set read/write paths
     root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
