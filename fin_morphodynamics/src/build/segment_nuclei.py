@@ -102,12 +102,10 @@ def segment_FOV(
         f" anisotropy: {anisotropy} |"
         f" flow threshold: {flow_threshold}"
     )
-    if return_probs:
-        probs = flows[2]
-    else:
-        probs = []
+    probs = flows[2]
+    grads = flows[1]
 
-    return mask.astype(label_dtype), probs
+    return mask.astype(label_dtype), probs, grads
 
 
 def cellpose_segmentation(
@@ -124,7 +122,8 @@ def cellpose_segmentation(
     model_type: Literal["nuclei", "cyto", "cyto2"] = "nuclei",
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
-    return_probs: Optional[bool] = False,
+    return_probs: Optional[bool] = True,
+    return_grads: Optional[bool] = True,
     xy_ds_factor: Optional[float] = 1.0,
     # tiff_stack_mode = False,
     # pixel_res_input = None
@@ -277,7 +276,7 @@ def cellpose_segmentation(
                     logging.info(f"anisotropy: {anisotropy}")
 
                     # Execute illumination correction
-                    image_mask, image_probs = segment_FOV(
+                    image_mask, image_probs, image_grads = segment_FOV(
                         data_zyx, #data_zyx.compute(),
                         model=model,
                         do_3D=do_3D,
@@ -294,10 +293,12 @@ def cellpose_segmentation(
                     if xy_ds_factor > 1.0:
                         image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
                         image_probs_out = resize(image_probs, dims_orig, order=1)
+                        image_grads_out = resize(image_grads, dims_orig, order=1)
 
                     else:
                         image_mask_out = image_mask
                         image_probs_out = image_probs
+                        image_grads_out = image_grads
                     
                     with TiffWriter(label_path + '.tif', bigtiff=True) as tif:
                         image_mask_out = image_mask_out.astype(np.uint8) # save some disk space
@@ -307,6 +308,12 @@ def cellpose_segmentation(
                         prob_name = im_name.replace('.nd2', "_" + experiment_date + f"_well{well_num:03}_t{t:03}_probs")
                         prob_path = os.path.join(save_directory, prob_name)
                         with TiffWriter(prob_path + '.tif', bigtiff=True) as tif:
+                            tif.write(image_probs_out)
+
+                    if return_grads:
+                        grad_name = im_name.replace('.nd2', "_" + experiment_date + f"_well{well_num:03}_t{t:03}_grads")
+                        grad_path = os.path.join(save_directory, grad_name)
+                        with TiffWriter(grad_path + '.tif', bigtiff=True) as tif:
                             tif.write(image_probs_out)
 
                     # im_name = nd2_path.replace('.zarr', '')

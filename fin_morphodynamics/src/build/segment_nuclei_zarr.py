@@ -21,44 +21,12 @@ from skimage.transform import resize
 import skimage.io as io
 from functions.utilities import path_leaf
 import zarr
+from fin_morphodynamics.src.utilities.image_utils import calculate_LoG
 
 # logging = logging.getlogging(__name__)
 logging.basicConfig(level=logging.NOTSET)
 # __OME_NGFF_VERSION__ = fractal_tasks_core.__OME_NGFF_VERSION__
 
-def process_raw_image(data_zyx, scale_vec):
-    # estimate background using blur
-    top1 = np.percentile(data_zyx, 99)
-    data_capped = data_zyx.copy()
-    data_capped[data_capped > top1] = top1
-    # data_capped = data_capped[:, 500:775, 130:475]
-
-    shape_orig = np.asarray(data_capped.shape)
-    shape_iso = shape_orig.copy()
-    iso_factor = scale_vec[0] / scale_vec[1]
-    shape_iso[0] = shape_iso[0] * iso_factor
-
-    gaussian_background = ski.filters.gaussian(data_capped, sigma=(2, 8, 8))
-    data_1 = np.divide(data_capped, gaussian_background)
-    # data_sobel = ski.filters.sobel(data_1)
-    # data_sobel_i = ski.util.invert(data_sobel)
-
-    data_rs = resize(data_1, shape_iso, preserve_range=True, order=1)
-    image = sitk.GetImageFromArray(data_rs)
-    data_log = sitk.GetArrayFromImage(sitk.LaplacianRecursiveGaussian(image, sigma=1))
-    data_log_i = resize(ski.util.invert(data_log), shape_orig, preserve_range=True, order=1)
-    # data_log_i = ski.util.invert(data_log)
-
-    # rescale and convert to 16 bit
-    data_bkg_16 = data_1.copy()
-    data_bkg_16 = data_bkg_16 - np.min(data_bkg_16)
-    data_bkg_16 = np.round(data_bkg_16 / np.max(data_bkg_16) * 2 ** 16 - 1).astype(np.uint16)
-
-    log_i_16 = data_log_i.copy()
-    log_i_16 = log_i_16 - np.min(log_i_16)
-    log_i_16 = np.round(log_i_16 / np.max(log_i_16) * 2 ** 16 - 1).astype(np.uint16)
-    
-    return log_i_16, data_bkg_16
 def segment_FOV(
     column: np.ndarray,
     model=None,
@@ -70,7 +38,8 @@ def segment_FOV(
     min_size=None,
     label_dtype=None,
     pretrain_flag=False,
-    return_probs=False
+    return_probs=True,
+    return_grads=True
 ):
     """
     Internal function that runs Cellpose segmentation for a single ROI.
@@ -143,7 +112,12 @@ def segment_FOV(
     else:
         probs = []
 
-    return mask.astype(label_dtype), probs
+    if return_grads:
+        grads = flows[1]
+    else:
+        grads = []
+
+    return mask.astype(label_dtype), probs, grads
 
 
 def cellpose_segmentation(
@@ -154,13 +128,14 @@ def cellpose_segmentation(
     # Task-specific arguments
     # seg_channel_label: Optional[str] = None,
     cell_diameter: float = 30,
-    cellprob_threshold: float = -4,
+    cellprob_threshold: float = 0,
     flow_threshold: float = 0.4,
     output_label_name: Optional[str] = None,
     model_type: Literal["nuclei", "cyto", "cyto2"] = "nuclei",
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
-    return_probs: Optional[bool] = False,
+    return_probs: Optional[bool] = True,
+    return_grads: Optional[bool] = True,
     xy_ds_factor: Optional[float] = 1.0,
     pixel_res_raw=None,
     file_suffix=".zarr"
@@ -207,55 +182,56 @@ def cellpose_segmentation(
     save_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     if not os.path.isdir(save_directory):
         os.makedirs(save_directory)
-        
-    # Preliminary check
-    # if seg_channel_label is None:
-    #     raise ValueError(
-    #         f"{seg_channel_label=} argument must be provided"
-    #     )
 
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
 
+    for well_index in range(len(image_list)):
 
-    for well_index in [2]: #range(12, len(image_list)):
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
         print("processing " + im_name)
         # read the image data
-        data_zyx = zarr.open(zarr_path, mode="r")
+        data_tzyx = zarr.open(zarr_path, mode="r")
         # n_wells = len(imObject.scenes)
         # well_list = imObject.scenes
-        n_time_points = data_zyx.shape[0]
+        n_time_points = data_tzyx.shape[0]
 
         # make sure we are not accidentally up-sampling
         assert xy_ds_factor >= 1.0
-
-        # extract key image attributes
-        # channel_names = imObject.channel_names  # list of channels and relevant info
-
-        # pixel_res_raw = np.asarray(imObject.physical_pixel_sizes)
-
         anisotropy_raw = pixel_res_raw[0] / pixel_res_raw[1]
-        # Find channel index
-        # ind_channel = None
-        # for ch in range(len(channel_names)):
-        #     lbl = channel_names[ch]
-        #     if lbl == seg_channel_label:
-        #         ind_channel = ch
-        # 
-        # if ind_channel == None:
-        #     raise Exception(f"ERROR: Specified segmentation channel ({len(seg_channel_label)}) was not found in data")
-        # well_list = well_list[28:]
 
-        # well_id_string = well_list[well_index]
-        # well_index = int(well_id_string.replace("XYPos:", ""))
-        # imObject.set_scene(well_id_string)
+        # generate zarr files
+        file_prefix = experiment_date + f"_well{well_index:04}"
+        mask_zarr_path = os.path.join(save_directory, file_prefix + "_labels.zarr")
+        prev_flag = os.path.isdir(mask_zarr_path)
 
-        for t in [n_time_points-1]: #reversed(range(n_time_points)):
+        mask_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16, chunks=(1,) + data_tzyx.shape[2:])
+        if return_probs:
+            prob_zarr_path = os.path.join(save_directory, file_prefix + "_probs.zarr")
+            prob_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16,
+                      chunks=(1,) + data_tzyx.shape[2:])
+
+        if return_grads:
+            grad_zarr_path = os.path.join(save_directory, file_prefix + "_probs.zarr")
+            grad_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16,
+                                  chunks=(1,) + data_tzyx.shape[2:])
+
+        # determine which indices to segment
+        if overwrite | (not prev_flag):
+            write_indices = np.arange(n_time_points)
+        else:
+            write_indices = []
+            for t in range(n_time_points):
+                z_flag = np.all(z[t, :, :, :] == 0)
+                if z_flag:
+                    write_indices.append(t)
+            write_indices = np.asarray(write_indices)
+
+        for t in write_indices:
 
             # extract image
-            data_zyx_raw = data_zyx[t]
+            data_zyx_raw = data_tzyx[t]
 
             # rescale data
             dims_orig = data_zyx_raw.shape
@@ -266,7 +242,8 @@ def cellpose_segmentation(
                 dims_new = dims_orig
                 data_zyx = data_zyx_raw.copy()
 
-            im_log, im_bkg = process_raw_image(data_zyx=data_zyx, scale_vec=pixel_res_raw)
+            if ("log" in model_name) or ("bkg" in model_name):
+                im_log, im_bkg = calculate_LoG(data_zyx=data_zyx, scale_vec=pixel_res_raw)
             if "log" in model_name:
                 data_zyx = im_log
             elif "bkg" in model_name:
@@ -326,7 +303,7 @@ def cellpose_segmentation(
                 logging.info(f"anisotropy: {anisotropy}")
 
                 # Execute illumination correction
-                image_mask, image_probs = segment_FOV(
+                image_mask, image_probs, im_grads = segment_FOV(
                     data_zyx, #data_zyx.compute(),
                     model=model,
                     do_3D=do_3D,
@@ -353,6 +330,11 @@ def cellpose_segmentation(
                 io.imsave(label_path, image_mask_out, check_contrast=False)
 
                 if return_probs:
+                    prob_name = experiment_date + f"_well{well_index:03}_t{t:03}_probs.tif"
+                    prob_path = os.path.join(save_directory, prob_name)
+                    io.imsave(prob_path, image_probs_out, check_contrast=False)
+
+                if return_grads:
                     prob_name = experiment_date + f"_well{well_index:03}_t{t:03}_probs.tif"
                     prob_path = os.path.join(save_directory, prob_name)
                     io.imsave(prob_path, image_probs_out, check_contrast=False)
