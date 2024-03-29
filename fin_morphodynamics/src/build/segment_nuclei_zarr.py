@@ -37,9 +37,7 @@ def segment_FOV(
     flow_threshold: float = 0.4,
     min_size=None,
     label_dtype=None,
-    pretrain_flag=False,
-    return_probs=True,
-    return_grads=True
+    pretrain_flag=False
 ):
     """
     Internal function that runs Cellpose segmentation for a single ROI.
@@ -107,15 +105,9 @@ def segment_FOV(
         f" anisotropy: {anisotropy} |"
         f" flow threshold: {flow_threshold}"
     )
-    if return_probs:
-        probs = flows[2]
-    else:
-        probs = []
 
-    if return_grads:
-        grads = flows[1]
-    else:
-        grads = []
+    probs = flows[2]
+    grads = flows[1]
 
     return mask.astype(label_dtype), probs, grads
 
@@ -125,22 +117,14 @@ def cellpose_segmentation(
     # Fractal arguments
     root: str,
     experiment_date: str,
-    # Task-specific arguments
-    # seg_channel_label: Optional[str] = None,
     cell_diameter: float = 30,
     cellprob_threshold: float = 0,
     flow_threshold: float = 0.4,
-    output_label_name: Optional[str] = None,
     model_type: Literal["nuclei", "cyto", "cyto2"] = "nuclei",
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
-    return_probs: Optional[bool] = True,
-    return_grads: Optional[bool] = True,
     xy_ds_factor: Optional[float] = 1.0,
     pixel_res_raw=None,
-    file_suffix=".zarr"
-    # tiff_stack_mode = False,
-    # pixel_res_input = None
 ) -> Dict[str, Any]:
     """
     Run cellpose segmentation on the ROIs of a single OME-NGFF image
@@ -206,16 +190,17 @@ def cellpose_segmentation(
         mask_zarr_path = os.path.join(save_directory, file_prefix + "_labels.zarr")
         prev_flag = os.path.isdir(mask_zarr_path)
 
-        mask_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16, chunks=(1,) + data_tzyx.shape[2:])
-        if return_probs:
-            prob_zarr_path = os.path.join(save_directory, file_prefix + "_probs.zarr")
-            prob_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16,
-                      chunks=(1,) + data_tzyx.shape[2:])
+        mask_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16, chunks=(1,) + data_tzyx.shape[1:])
 
-        if return_grads:
-            grad_zarr_path = os.path.join(save_directory, file_prefix + "_probs.zarr")
-            grad_zarr = zarr.open(mask_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.uint16,
-                                  chunks=(1,) + data_tzyx.shape[2:])
+        grad_zarr_path = os.path.join(save_directory, file_prefix + "_grads.zarr")
+        grad_zarr = zarr.open(grad_zarr_path, mode='a',
+                              shape=(data_tzyx.shape[0], 3, data_tzyx.shape[1], data_tzyx.shape[2], data_tzyx.shape[3]),
+                              dtype=np.float32, chunks=(1, 3,) + data_tzyx.shape[1:])
+
+
+        prob_zarr_path = os.path.join(save_directory, file_prefix + "_probs.zarr")
+        prob_zarr = zarr.open(prob_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.float32,
+                              chunks=(1,) + data_tzyx.shape[1:])
 
         # determine which indices to segment
         if overwrite | (not prev_flag):
@@ -223,7 +208,7 @@ def cellpose_segmentation(
         else:
             write_indices = []
             for t in range(n_time_points):
-                z_flag = np.all(z[t, :, :, :] == 0)
+                z_flag = np.all(prob_zarr[t, :, :, :] == 0)
                 if z_flag:
                     write_indices.append(t)
             write_indices = np.asarray(write_indices)
@@ -303,7 +288,7 @@ def cellpose_segmentation(
                 logging.info(f"anisotropy: {anisotropy}")
 
                 # Execute illumination correction
-                image_mask, image_probs, im_grads = segment_FOV(
+                image_mask, image_probs, image_grads = segment_FOV(
                     data_zyx, #data_zyx.compute(),
                     model=model,
                     do_3D=do_3D,
@@ -313,37 +298,21 @@ def cellpose_segmentation(
                     cellprob_threshold=cellprob_threshold,
                     flow_threshold=flow_threshold,
                     min_size=min_size,
-                    pretrain_flag=(pretrained_model != None),
-                    return_probs=return_probs
+                    pretrain_flag=(pretrained_model != None)
                 )
 
                 if xy_ds_factor > 1.0:
                     image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
                     image_probs_out = resize(image_probs, dims_orig, order=1)
-
+                    image_grads_out = resize(image_grads, (3,) + dims_orig, order=1)
                 else:
                     image_mask_out = image_mask
                     image_probs_out = image_probs
+                    image_grads_out = image_grads
                 
-                # with TiffWriter(label_path + '.tif', bigtiff=True) as tif:
-                image_mask_out = image_mask_out.astype(np.uint16)     # save some disk space
-                io.imsave(label_path, image_mask_out, check_contrast=False)
-
-                if return_probs:
-                    prob_name = experiment_date + f"_well{well_index:03}_t{t:03}_probs.tif"
-                    prob_path = os.path.join(save_directory, prob_name)
-                    io.imsave(prob_path, image_probs_out, check_contrast=False)
-
-                if return_grads:
-                    prob_name = experiment_date + f"_well{well_index:03}_t{t:03}_probs.tif"
-                    prob_path = os.path.join(save_directory, prob_name)
-                    io.imsave(prob_path, image_probs_out, check_contrast=False)
-
-
-                # im_name = zarr_path.replace(file_suffix, '')
-                # with TiffWriter(im_name + 'tif', bigtiff=True) as tif:
-                #     tif.write(data_zyx)
- 
+                mask_zarr[t] = image_mask_out
+                prob_zarr[t] = image_probs_out
+                grad_zarr[t] = image_grads_out
 
                 logging.info(f"End file save process, exit")
             else:
@@ -354,21 +323,17 @@ def cellpose_segmentation(
 if __name__ == "__main__":
     # sert some hyperparameters
     overwrite = False
-    model_type = "nuclei"
-    output_label_name = "td-Tomato"
-    seg_channel_label = "561"
     xy_ds_factor = 1
-    cell_diameter = 8
+    cell_diameter = 10
     cellprob_threshold = 0.0
     pixel_res_raw = [2, 0.55, 0.55]
     # set path to CellPose model to use
-    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\bk\\models\\bkg-v2"
+    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\log\\models\\log-v5"
 
     # set read/write paths
     root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
     experiment_date = "20240223"
 
     cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw,
-                          return_probs=True, xy_ds_factor=xy_ds_factor, cell_diameter=cell_diameter,
-                          cellprob_threshold=cellprob_threshold,
-                          output_label_name=output_label_name, pretrained_model=pretrained_model, overwrite=overwrite)
+                          xy_ds_factor=xy_ds_factor, cell_diameter=cell_diameter,
+                          cellprob_threshold=cellprob_threshold, pretrained_model=pretrained_model, overwrite=overwrite)
