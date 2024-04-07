@@ -23,11 +23,11 @@ def calculate_LoG(data_zyx, scale_vec, make_isotropic=False):
     data_rs = resize(data_1, shape_iso, preserve_range=True, order=1)
     image = sitk.GetImageFromArray(data_rs)
     data_log = sitk.GetArrayFromImage(sitk.LaplacianRecursiveGaussian(image, sigma=1))
-    if make_isotropic:
-        data_log_i = ski.util.invert(data_log)
-    else:
+    if not make_isotropic:
         data_log_i = resize(ski.util.invert(data_log), shape_orig, preserve_range=True, order=1)
-        data_log_i = ski.util.invert(data_log_i)
+        # data_log_i = ski.util.invert(data_log_i)
+    else:
+        data_log_i = ski.util.invert(data_log)
 
     # rescale and convert to 16 bit
     if make_isotropic:

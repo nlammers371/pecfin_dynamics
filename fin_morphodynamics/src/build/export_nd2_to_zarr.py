@@ -33,7 +33,7 @@ def export_nd2_to_zarr(root, full_filename, experiment_date, overwrite_flag):
     # res_raw = imObject.voxel_size()
     # scale_vec = np.asarray(res_raw)[::-1]
     print("Exporting well time series to zarr...")
-    for well_num in tqdm(range(13, n_time_points)):
+    for well_num in tqdm(range(12, n_time_points)):
 
         # initialize zarr data store
         filename = experiment_date + f"_well{well_num:04}.zarr"
@@ -76,7 +76,8 @@ def export_nd2_to_zarr(root, full_filename, experiment_date, overwrite_flag):
 
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
-    full_filename = "F://pec_fin_dynamics//20240223_wt_tests//wt_tdTom_timelapse_long.nd2"
+    # full_filename = "F://pec_fin_dynamics//20240223_wt_tests//wt_tdTom_timelapse_long.nd2"
+    # full_filename = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/20240223/wt_tdTom_timelapse_long.nd2"
     experiment_date = "20240223"
     root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
     overwrite_flag = False
