@@ -1,5 +1,7 @@
 import napari
 import os
+
+import pandas as pd
 from tqdm import tqdm
 import numpy as np
 from ultrack import MainConfig, load_config, track, to_tracks_layer, tracks_to_zarr
@@ -11,68 +13,61 @@ import json
 import nd2
 
 # # set parameters
-nd2_path = "F://pec_fin_dynamics//20240223_wt_tests//wt_tdTom_timelapse_long.nd2"
 root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
-experiment_date = "20240223"  #"231016_EXP40_LCP1_UVB_300mJ_WT_Timelapse_Raw"
-config_name = "tracking_v1.txt"
+experiment_date = "20240223"
+config_name = "tracking_thresh.txt"
 tracking_folder = config_name.replace(".txt", "")
 tracking_folder = tracking_folder.replace(".toml", "")
+
 well_num = 2
+start_i = 0
+stop_i = 50
+scale_vec = np.asarray([2.0, 0.55, 0.55])
+centroid_flag = False
+label_spacer = False
+
+suffix = ""
+if centroid_flag:
+    suffix = "_centroid"
+
+if label_spacer:
+    suffix += "_spacer"
 
 # get path to metadata
 metadata_path = os.path.join(root, "metadata", "tracking")
 
 # set output path for tracking results
-project_path = os.path.join(root, "tracking", experiment_date,  tracking_folder, f"well{well_num:04}", "")
+project_path = os.path.join(root, "tracking", experiment_date,  tracking_folder, f"well{well_num:04}" + suffix, "")
 
 # path to image data
 data_path = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
 filename = experiment_date + f"_well{well_num:04}.zarr"
-image_zarr = os.path.join(data_path, filename)
 
-label_zarr = os.path.join(project_path, "segments.zarr")
+# load tracking results
+image_path = os.path.join(data_path, filename)
+label_path = os.path.join(project_path, "segments.zarr")
+data_zarr = zarr.open(image_path, mode='r')
+data_zarr = data_zarr[start_i:stop_i, :, 400:850, 80:520]
+seg_zarr = zarr.open(label_path, mode='r')
 
-# metadata_file_path = os.path.join(root, "metadata", experiment_date, "metadata.json")
-# f = open(metadata_file_path)
-# metadata = json.load(f)
-# scale_vec = np.asarray([metadata["ProbPhysicalSizeZ"], metadata["ProbPhysicalSizeY"], metadata["ProbPhysicalSizeX"]])
-# scale_vec_im = np.asarray([metadata["PhysicalSizeZ"], metadata["PhysicalSizeY"], metadata["PhysicalSizeX"]])
-imObject = nd2.ND2File(nd2_path)
-res_raw = imObject.voxel_size()
-scale_vec = np.asarray(res_raw)[::-1]
+cfg = load_config(os.path.join(metadata_path, config_name))
+# tracks_df, graph = to_tracks_layer(cfg)
+tracks_df = pd.read_csv(os.path.join(project_path, "tracks.csv"))
 
-
-data_tzyx = zarr.open(image_zarr, mode='r')
-segments = zarr.open(label_zarr, mode='r')
+viewer = napari.view_image(data_zarr, scale=tuple(scale_vec))
 
 
-
-# viewer.add_labels(label_tzyx, scale=tuple(scale_vec), name="raw labels")
-
-cfg = load_config(os.path.join(project_path, config_name))
-tracks_df, graph = to_tracks_layer(cfg)
-
-viewer = napari.view_image(data_tzyx[:25, :, 300:700, :], scale=tuple(scale_vec))
-
-# tracks_df_ft = tracks_df.loc[(tracks_df["t"] >= start_i) & (tracks_df["t"] < stop_i), :]
-#
-#
-# track_index = np.unique(tracks_df_ft["track_id"])
-# keys = graph.keys()
-# graph_ft = {k:graph[k] for k in keys if k in track_index}
 viewer.add_tracks(
     tracks_df[["track_id", "t", "z", "y", "x"]],
     name="tracks",
-    graph=graph,
     scale=tuple(scale_vec),
     translate=(0, 0, 0, 0),
     visible=False,
 )
 
-# segments = zarr.open(os.path.join(save_directory, "segments.zarr"), mode='r')
 
 viewer.add_labels(
-    segments,
+    seg_zarr,
     name="segments",
     scale=tuple(scale_vec),
     translate=(0, 0, 0, 0),
