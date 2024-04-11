@@ -45,10 +45,10 @@ class PointData(Dataset):
 
     def __getitem__(self, idx):
         # read data from hdf5
-        space_data = pd.read_csv(self.data_paths[idx], index_col=0)
+        space_data = pd.read_csv(self.data_paths[idx])
         points_raw = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
-        if "fin_label_cur" in space_data.columns:# xyz points
-            targets = np.reshape(space_data.loc[:, "fin_label_cur"].to_numpy(), (points_raw.shape[0], 1))  # integer categories
+        if "fin_label_curr" in space_data.columns:# xyz points
+            targets = np.reshape(space_data.loc[:, "fin_label_curr"].to_numpy(), (points_raw.shape[0], 1))  # integer categories
         else:
             targets = -1*np.ones((points_raw.shape[0], 1))
         # down sample point cloud
@@ -120,10 +120,14 @@ class PointData(Dataset):
 
     def downsample(self, points, targets):
         if len(points) >= self.npoints:
+            raise Exception("This should not happen")
             choice = np.random.choice(len(points), self.npoints, replace=False)
         else:
-            # case when there are less points than the desired number
-            choice = np.random.choice(len(points), self.npoints, replace=True)
+            # case when there are fewer points than the desired number
+            # choice = np.random.choice(len(points), self.npoints, replace=True)
+            n_points = len(points)
+            choice = np.tile(range(n_points), int(np.ceil(self.npoints/n_points)))
+            choice = choice[:self.npoints]
         points = points[choice, :]
         targets = targets[choice]
 

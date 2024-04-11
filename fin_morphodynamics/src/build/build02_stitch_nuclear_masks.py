@@ -275,7 +275,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
 
     # get list of wells with labels to stitch
     well_list = glob.glob(cellpose_directory + "*_probs.zarr")
-    for w, well in enumerate([well_list[0]] + [well_list[-1]]):
+    for w, well in enumerate([well_list[-1]] + [well_list[0]]):
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
         print("Stitching data from " + file_prefix)
@@ -302,12 +302,14 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
             write_indices = np.arange(n_time_points)
         else:
             write_indices = []
-            for t in range(n_time_points):
-                z_flag_to = np.all(s_mask_zarr[t, :, :, :] == 0)
-                z_flag_from = np.all(prob_zarr[t, :, :, :] == 0)
-                if z_flag_to and (~z_flag_from):  # guard against edge case where cellpose output was initialized but not filled
-                    write_indices.append(t)
-            write_indices = np.asarray(write_indices)
+            # for t in range(n_time_points):
+                # z_flag_to = np.all(s_mask_zarr[t, :, :, :] == 0)
+                # z_flag_from = np.all(prob_zarr[t, :, :, :] == 0)
+                # if z_flag_to and (~z_flag_from):  # guard against edge case where cellpose output was initialized but not filled
+                #     write_indices.append(t)
+            n_from = prob_zarr.nchunks_initialized
+            n_to = s_mask_zarr.nchunks_initialized
+            write_indices = np.arange(n_to, n_from)
 
         # iterate through time points
         print("Stitching labels...")
@@ -336,6 +338,6 @@ if __name__ == "__main__":
     scale_vec = np.asarray([2.0, 0.55, 0.55])
     experiment_date = "20240223"
     model_name = "log-v5"
-    overwrite = True
+    overwrite = False
 
     stitch_cellpose_labels(root, model_name, experiment_date, overwrite)

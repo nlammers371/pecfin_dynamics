@@ -10,7 +10,6 @@ os.environ['OMP_NUM_THREADS'] = f"{default_n_threads}"
 
 from glob2 import glob
 import skimage.io as io
-from alphashape import alphashape
 from functions.utilities import path_leaf
 from skimage.transform import resize
 import pandas as pd
