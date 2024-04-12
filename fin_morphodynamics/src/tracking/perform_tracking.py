@@ -57,8 +57,12 @@ def perform_tracking(root, experiment_date, well_num, tracking_config, scale_vec
 
     # specify time points to load
     # data_tzyx = data_tzyx_full[start_i:stop_i, :, :, :]
-    mask_tzyx = mask_tzyx_full[start_i:stop_i, :, 400:850, 80:520]
-
+    if well_num == 12:
+        mask_tzyx = mask_tzyx_full[start_i:stop_i, :, 400:850, 80:520]
+    elif well_num == 2:
+        mask_tzyx = mask_tzyx_full[start_i:stop_i, :, 300:700, 100:500]
+    else:
+        mask_tzyx = mask_tzyx_full
 
     # load tracking config file
     cfg = load_config(os.path.join(metadata_path, tracking_config))
@@ -117,13 +121,13 @@ if __name__ == '__main__':
     experiment_date = "20240223"
     root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
     overwrite_flag = True
-    well_num = 2
+    well_num = 12
     use_centroids = False
-    tracking_config = "tracking_thresh.txt"
+    tracking_config = "tracking_strict_v2.txt"
     segmentation_model = "log-v5"
     add_label_spacer = False
     perform_tracking(root, experiment_date, well_num, tracking_config, scale_vec=scale_vec,
-                     seg_model=segmentation_model, start_i=0, stop_i=50, overwrite_flag=overwrite_flag,
+                     seg_model=segmentation_model, start_i=0, stop_i=101, overwrite_flag=overwrite_flag,
                      use_centroids=use_centroids, add_label_spacers=add_label_spacer)
 # print("Saving downsampled image data...")
 # np.save(project_path + "image_data_ds.npy", data_tzyx)
