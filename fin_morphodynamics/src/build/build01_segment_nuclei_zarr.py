@@ -217,7 +217,7 @@ def cellpose_segmentation(
 
             # extract image
             data_zyx_raw = data_tzyx[t]
-            if np.any(data_zyx_raw>0):
+            if np.any(data_zyx_raw > 0):
                 # rescale data
                 dims_orig = data_zyx_raw.shape
                 if xy_ds_factor > 1.0:
