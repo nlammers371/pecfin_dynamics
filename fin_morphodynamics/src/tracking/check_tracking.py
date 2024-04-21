@@ -15,7 +15,7 @@ import nd2
 # # set parameters
 root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
 experiment_date = "20240223"
-config_name = "tracking_strict.txt"
+config_name = "tracking_strict_v2.txt"
 model ="log-v5"
 tracking_folder = config_name.replace(".txt", "")
 tracking_folder = tracking_folder.replace(".toml", "")

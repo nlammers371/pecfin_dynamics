@@ -94,7 +94,7 @@ def on_points_click(layer, event):
 
 
 def curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_int=0,
-                    overwrite_flag=False, n_mlp_nodes=500):
+                    overwrite_flag=False, n_mlp_nodes=10):
     
     global mlp_df, mdl, point_df
 
@@ -135,10 +135,10 @@ def curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_
     if not os.path.isdir(curated_data_dir):
         os.makedirs(curated_data_dir)
     curated_data_path = os.path.join(curated_data_dir, experiment_date + "_MLP_data.csv")
-    if os.path.isfile(mdl_path):
-        mdl = load(mdl_path)
-    else:
-        mdl = MLPClassifier(random_state=1, max_iter=5000, hidden_layer_sizes=n_mlp_nodes)
+    # if os.path.isfile(mdl_path):
+    #     mdl = load(mdl_path)
+    # else:
+    mdl = MLPClassifier(random_state=1, max_iter=5000, hidden_layer_sizes=n_mlp_nodes)
     if os.path.isfile(curated_data_path):
         mlp_df = pd.read_csv(curated_data_path)
         keep_cols = [col for col in mlp_df.columns if "Unnamed" not in col]
@@ -202,6 +202,22 @@ def curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_
     else:
         mlp_df = mlp_df_temp.copy()
 
+    curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
+    if len(mlp_df) > 10:
+        feature_cols = [c for c in mlp_df.columns if "feat" in c]
+        X_train = mlp_df.loc[:, feature_cols]
+        Y_train = mlp_df.loc[:, "fin_label_curr"]
+
+        print("Updating tissue predictions...")
+        mdl = mdl.fit(X_train, Y_train)
+
+        # get new predictions
+        X_pd = point_df.loc[:, feature_cols]
+        Y_pd = mdl.predict(X_pd)
+        curation_df.loc[:, "fin_label_pd"] = (Y_pd + 1) / 4
+    else:
+        curation_df.loc[:, "fin_label_pd"] = curation_df.loc[:, "fin_label_curr"].copy()
+
     # set colormap
     label_color_cycle = ["white", "gray", "green", "red", "blue"]
 
@@ -209,8 +225,6 @@ def curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_
     viewer = napari.view_image(im_prob, colormap="gray", scale=scale_vec,
                                contrast_limits=(-16, np.percentile(im_prob, 99.8)))
 
-    curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
-    curation_df.loc[:, "fin_label_pd"] = curation_df.loc[:, "fin_label_curr"].copy()
 
     # generate master point array to integrate results
     point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
@@ -304,6 +318,6 @@ if __name__ == '__main__':
     scale_vec = np.asarray([2.0, 0.55, 0.55])
     seg_model = "log-v5"
     well_num = 12
-    curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_int=101,
+    curate_pec_fins(root, experiment_date, scale_vec, seg_model, well_num, time_int=50,
                     overwrite_flag=False, n_mlp_nodes=500)
 
