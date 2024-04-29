@@ -42,8 +42,7 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     zoom_factor = np.divide(shape_iso, shape_orig)
     # cp_array_rs = zoom(cp_mask_array, zoom_factor, order=0)
     grad_array_rs = zoom(grad_array, (1,) + tuple(zoom_factor), order=1) * rs_factor
-    prob_array_rs = zoom(prob_array, zoom_factor,
-                         order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
+    prob_array_rs = zoom(prob_array, zoom_factor, order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
 
     # list of prob thresholds to use
     mask_thresh_list = list(range(min_prob, max_prob + prob_increment, prob_increment))
@@ -301,12 +300,6 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
         if overwrite | (not prev_flag):
             write_indices = np.arange(n_time_points)
         else:
-            write_indices = []
-            # for t in range(n_time_points):
-                # z_flag_to = np.all(s_mask_zarr[t, :, :, :] == 0)
-                # z_flag_from = np.all(prob_zarr[t, :, :, :] == 0)
-                # if z_flag_to and (~z_flag_from):  # guard against edge case where cellpose output was initialized but not filled
-                #     write_indices.append(t)
             n_from = prob_zarr.nchunks_initialized
             n_to = s_mask_zarr.nchunks_initialized
             write_indices = np.arange(n_to, n_from)

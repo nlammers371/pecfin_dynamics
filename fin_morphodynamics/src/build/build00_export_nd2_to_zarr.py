@@ -28,7 +28,7 @@ def export_nd2_to_zarr(root, full_filename, experiment_date, overwrite_flag):
     im_array_dask = imObject.to_dask()
     nd2_shape = im_array_dask.shape
     n_time_points = nd2_shape[0]
-    n_wells = nd2_shape[1]
+    # n_wells = nd2_shape[1]
     dtype = im_array_dask.dtype
     # res_raw = imObject.voxel_size()
     # scale_vec = np.asarray(res_raw)[::-1]

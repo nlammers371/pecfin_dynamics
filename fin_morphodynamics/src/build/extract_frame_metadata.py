@@ -47,6 +47,7 @@ def parse_plate_metadata(root, experiment_date, sheet_names=None):
     plate_df["start_age_hpf"] = start_age_hpf
 
     return plate_df
+
 def parse_nd2_metadata(nd2_path):
 
     imObject = nd2.ND2File(nd2_path)
@@ -109,14 +110,19 @@ def parse_nd2_metadata(nd2_path):
     return well_df
 def parse_curation_metadata(root, experiment_date):
     curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.xlsx")
-    curation_xl = pd.ExcelFile(curation_path)
-    curation_df = curation_xl.parse(curation_xl.sheet_names[0])
-    curation_df_long = pd.melt(curation_df,
-                               id_vars=["series_number", "notes", "example_flag", "follow_up_flag"],
-                               var_name="time_string", value_name="qc_flag")
-    time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
-    curation_df_long["time_index"] = time_ind_vec
-    curation_df_long = curation_df_long.rename(columns={"series_number": "nd2_series"})
+    if os.path.isfile(curation_path):
+        curation_xl = pd.ExcelFile(curation_path)
+        curation_df = curation_xl.parse(curation_xl.sheet_names[0])
+        curation_df_long = pd.melt(curation_df,
+                                   id_vars=["series_number", "notes", "example_flag", "follow_up_flag"],
+                                   var_name="time_string", value_name="qc_flag")
+        time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
+        curation_df_long["time_index"] = time_ind_vec
+        curation_df_long = curation_df_long.rename(columns={"series_number": "nd2_series"})
+
+    else:
+        curation_df_long = None
+        curation_df = None
 
     return curation_df_long, curation_df
 

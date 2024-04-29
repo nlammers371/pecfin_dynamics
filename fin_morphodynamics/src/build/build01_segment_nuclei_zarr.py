@@ -170,7 +170,7 @@ def cellpose_segmentation(
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
 
-    for well_index in range(6, len(image_list)):
+    for well_index in range(len(image_list)):
 
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
