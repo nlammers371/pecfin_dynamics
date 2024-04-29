@@ -1,6 +1,5 @@
 import napari
 import os
-
 import pandas as pd
 from tqdm import tqdm
 import numpy as np
@@ -15,7 +14,7 @@ import nd2
 # # set parameters
 root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
 experiment_date = "20240223"
-config_name = "tracking_strict_v2.txt"
+config_name = "tracking_jordao.txt"
 model ="log-v5"
 tracking_folder = config_name.replace(".txt", "")
 tracking_folder = tracking_folder.replace(".toml", "")
