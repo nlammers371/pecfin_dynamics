@@ -63,7 +63,7 @@ def registration_wrapper(root, experiment_date, model_name,register_masks=True, 
         im_name = path_leaf(zarr_path)
         print("processing " + im_name)
         # read the image data
-        data_zarr = zarr.open(zarr_path, mode="r")
+        data_zarr = zarr.open(zarr_path, mode="a")
 
         # generate zarr files
         file_prefix = experiment_date + f"_well{well_index:04}"
@@ -82,7 +82,8 @@ def registration_wrapper(root, experiment_date, model_name,register_masks=True, 
 
         data_zarr = data_zarr[:last_frame]
         # register dataset
-        data_zarr, shift_array = register_timelapse(data_zarr)
+        registered_data, shift_array = register_timelapse(data_zarr)
+        data_zarr[:last_frame] = registered_data
 
         # save shift array
         np.save(os.path.join(metadata_dir, "registration", experiment_date + "_shift_array.npy"), shift_array)
@@ -103,12 +104,11 @@ def registration_wrapper(root, experiment_date, model_name,register_masks=True, 
                     grad_zarr[t + 1] = ndi.shift(grad_zarr[t + 1], (0,) + tuple(shift_array[t + 1, :]), order=1)
 
             # now check for stitched labels
-            stitch_name = os.path.join(stitched_directory, file_prefix + "_labels_stitched_line.zarr")
+            stitch_name = os.path.join(stitched_directory, file_prefix + "_labels_stitched.zarr")
             if os.path.isdir(prob_name):
                 stitch_zarr = zarr.open(stitch_name, mode="a")
                 for t in tqdm(range(0, last_frame-1), "Registering stitched labels..."):
                     stitch_zarr[t + 1] = ndi.shift(stitch_zarr[t + 1], (shift_array[t + 1, :]), order=0)
-        # print("Check")
 
 
 if __name__ == "__main__":

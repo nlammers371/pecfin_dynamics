@@ -3,7 +3,7 @@ import glob2 as glob
 import os
 from typing import Any
 from typing import Dict
-from functions.utilities import path_leaf
+from src.utilities.functions import path_leaf
 import pandas as pd
 import nd2
 import openpyxl
@@ -14,7 +14,7 @@ def parse_plate_metadata(root, experiment_date, sheet_names=None):
     plate_directory = os.path.join(root, "metadata", "plate_maps", experiment_date + "_plate_map.xlsx")
 
     if sheet_names is None:
-        sheet_names = ["series_number_map", "genotype_map", "age_hpf"]
+        sheet_names = ["series_number_map", "genotype", "start_age_hpf"]
 
     row_letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
     col_nums = [i for i in range(12)]
@@ -148,8 +148,30 @@ def extract_frame_metadata(
         raise Exception("Multiple .nd2 files were found in target directory. Make sure to put fullembryo images into a subdirectory")
 
     nd2_path = image_list[0]
+    imObject = nd2.ND2File(nd2_path)
+    im_array_dask = imObject.to_dask()
+    nd2_shape = im_array_dask.shape
+
+    metadata = dict({})
+    metadata["n_time_points"] = nd2_shape[0]
+    metadata["n_wells"] = nd2_shape[1]
+    n_z = nd2_shape[2]
+    if len(nd2_shape) == 6:
+        n_channels = nd2_shape[3]
+        n_x = nd2_shape[5]
+        n_y = nd2_shape[4]
+    else:
+        n_channels = 1
+        n_x = nd2_shape[4]
+        n_y = nd2_shape[3]
+
+    metadata["n_channels"] = n_channels
+    metadata["zyx_shape"] = tuple([n_z, n_y, n_x])
+    metadata["voxel_size_um"] = tuple(np.asarray(imObject.voxel_size())[::-1])
+
     im_name = path_leaf(nd2_path)
     print("processing " + im_name)
+
     ####################
     # Process information from plate map
     plate_df = parse_plate_metadata(root, experiment_date)
@@ -157,10 +179,6 @@ def extract_frame_metadata(
     ####################
     # Process extract information from nd2 metadata
     ####################
-    # xyz pixel resolution; xyz stage position; time stamp
-    # read the image data
-
-
     # join on plate info using series id
     well_df = parse_nd2_metadata(nd2_path)
     plate_cols = plate_df.columns
@@ -176,18 +194,20 @@ def extract_frame_metadata(
     ################
     # Finally, add curation info
     curation_df_long, curation_df_wide = parse_curation_metadata(root, experiment_date)
-    well_df = well_df.merge(curation_df_long, on=["nd2_series", "time_index"], how="left")
+    if curation_df_long is not None:
+        well_df = well_df.merge(curation_df_long, on=["nd2_series", "time_index"], how="left")
     well_df["estimated_stage_hpf"] = well_df["start_age_hpf"] + well_df["time"]/3600
 
     # save
-    well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"))
+    well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"), index=False)
 
-    return well_df
+    return metadata
 
 if __name__ == "__main__":
 
     # set path to CellPose model to use
     root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
     experiment_date = "20240223"
+
 
     extract_frame_metadata(root=root, experiment_date=experiment_date)
