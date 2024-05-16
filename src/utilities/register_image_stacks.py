@@ -55,8 +55,9 @@ def registration_wrapper(root, experiment_date, model_name,register_masks=True, 
     stitched_directory = os.path.join(root, "built_data", "stitched_labels", model_name, experiment_date, '')
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
-    
-    for well_index in [2]:# range(len(image_list)):
+    register_list = [i for i in range(len(image_list)) if i not in [2, 12]]
+
+    for well_index in register_list:
 
         # prob_zarr = zarr.open(prob_name, mode="r")
         zarr_path = image_list[well_index]
@@ -119,4 +120,5 @@ if __name__ == "__main__":
     experiment_date = "20240223"
     model_name = "log-v5"
 
-    registration_wrapper(root=root, experiment_date=experiment_date, model_name=model_name, overwrite=overwrite)
+    registration_wrapper(root=root, experiment_date=experiment_date, model_name=model_name,
+                         register_masks=False, overwrite=overwrite)

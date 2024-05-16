@@ -32,7 +32,7 @@ def perform_tracking(root, experiment_date, well_num, tracking_config, scale_vec
     # set parameters
     # data_zarr = os.path.join(root, "built_data", "zarr_image_files", experiment_date, file_prefix + ".zarr")
     if not use_centroids:
-        mask_zarr_path = os.path.join(root, "built_data", "stitched_labels", seg_model, experiment_date, file_prefix + "_labels_stitched_line.zarr")
+        mask_zarr_path = os.path.join(root, "built_data", "stitched_labels", seg_model, experiment_date, file_prefix + "_labels_stitched.zarr")
         suffix = ""
     else:
         mask_zarr_path = os.path.join(root, "built_data", "centroid_labels", seg_model, experiment_date,
@@ -119,11 +119,11 @@ if __name__ == '__main__':
 
     scale_vec = np.asarray([2.0, 0.55, 0.55])
     experiment_date = "20240223"
-    root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
+    root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
     overwrite_flag = True
-    well_num = 12
+    well_num = 2
     use_centroids = False
-    tracking_config = "tracking_strict_v2.txt"
+    tracking_config = "tracking_jordao_frontier.txt"
     segmentation_model = "log-v5"
     add_label_spacer = False
     perform_tracking(root, experiment_date, well_num, tracking_config, scale_vec=scale_vec,

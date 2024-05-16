@@ -12,9 +12,10 @@ import json
 import nd2
 
 # # set parameters
-root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
+# root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
+root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
 experiment_date = "20240223"
-config_name = "tracking_jordao.txt"
+config_name = "tracking_jordao_frontier.txt"
 model ="log-v5"
 tracking_folder = config_name.replace(".txt", "")
 tracking_folder = tracking_folder.replace(".toml", "")
@@ -104,6 +105,8 @@ viewer.add_labels(
     scale=tuple(scale_vec),
     translate=(0, 0, 0, 0),
 ).contour = 2
+
+
 viewer.window.add_plugin_dock_widget(plugin_name='napari-animation')
 
 if __name__ == '__main__':
