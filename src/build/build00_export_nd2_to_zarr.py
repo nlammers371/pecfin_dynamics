@@ -82,28 +82,28 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, nuclear_channel=Non
                     well_zarr[chi, ti] = data_zyx
 
         # register frames
-        if not multichannel_flag:
-            _, shift_array = register_timelapse(well_zarr)
-        else:
-            _, shift_array = register_timelapse(np.squeeze(well_zarr[nuclear_channel]))
-
-        # apply shifts
-        for t in tqdm(range(1, well_zarr.shape[1]), "Registering image data..."):
-
-            if not multichannel_flag:
-                well_zarr[t] = ndi.shift(well_zarr[t], (shift_array[t, :]), order=1)
-            else:
-                for chi in range(n_channels):
-                    well_zarr[chi, t] = ndi.shift(np.squeeze(well_zarr[chi, t]), (shift_array[t, :]), order=1)
-
-        print("check")
+        # if not multichannel_flag:
+        #     _, shift_array = register_timelapse(well_zarr)
+        # else:
+        #     _, shift_array = register_timelapse(np.squeeze(well_zarr[nuclear_channel]))
+        #
+        # # apply shifts
+        # for t in tqdm(range(1, well_zarr.shape[1]), "Registering image data..."):
+        #
+        #     if not multichannel_flag:
+        #         well_zarr[t] = ndi.shift(well_zarr[t], (shift_array[t, :]), order=1)
+        #     else:
+        #         for chi in range(n_channels):
+        #             well_zarr[chi, t] = ndi.shift(np.squeeze(well_zarr[chi, t]), (shift_array[t, :]), order=1)
+        #
+        # print("check")
 
     imObject.close()
 
 if __name__ == '__main__':
-    experiment_date = "20240424"
-    root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/"
-    overwrite_flag = False
+    experiment_date = "20240425"
+    root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
+    overwrite_flag = True
     nuclear_channel = 0
     channel_names = ["H2B-tdTom", "tbx5a-StayGold"]
     export_nd2_to_zarr(root, experiment_date, overwrite_flag, nuclear_channel=0, channel_names=channel_names)

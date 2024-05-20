@@ -13,8 +13,9 @@ from typing import Optional
 import numpy as np
 from cellpose import models
 from cellpose.core import use_gpu
+import pandas as pd
 from skimage.transform import resize
-from functions.utilities import path_leaf
+from src.utilities.functions import path_leaf
 import zarr
 from src.utilities.image_utils import calculate_LoG
 
@@ -81,7 +82,7 @@ def segment_FOV(
             diameter=diameter,
             anisotropy=anisotropy,
             cellprob_threshold=cellprob_threshold,
-            net_avg=False,
+            # net_avg=False,
             augment=False
         )
     if not do_3D:
@@ -120,6 +121,7 @@ def cellpose_segmentation(
     overwrite: Optional[bool] = False,
     xy_ds_factor: Optional[float] = 1.0,
     pixel_res_raw=None,
+    nuclear_channel: int = 0,
 ) -> Dict[str, Any]:
     """
     Run cellpose segmentation on the ROIs of a single OME-NGFF image
@@ -157,6 +159,16 @@ def cellpose_segmentation(
     # path to zarr files
     data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
 
+    # load curation data
+    curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
+    has_curation_info = os.path.isfile(curation_path)
+    if has_curation_info:
+        curation_df = pd.read_csv(curation_path)
+        curation_df_long = pd.melt(curation_df,
+                                   id_vars=["series_number", "notes", "tbx5a_flag", "follow_up_flag"],
+                                   var_name="time_index", value_name="qc_flag")
+        curation_df_long["time_index"] = curation_df_long["time_index"].astype(int)
+
     model_name = path_leaf(pretrained_model)
     save_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     if not os.path.isdir(save_directory):
@@ -165,15 +177,15 @@ def cellpose_segmentation(
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
 
-    for well_index in range(len(image_list)):
+    for well_index in range(5, len(image_list)):
 
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
         print("processing " + im_name)
         # read the image data
         data_tzyx = zarr.open(zarr_path, mode="r")
-        # n_wells = len(imObject.scenes)
-        # well_list = imObject.scenes
+        if len(data_tzyx.shape) == 5:
+            data_tzyx = data_tzyx[nuclear_channel]
         n_time_points = data_tzyx.shape[0]
 
         # make sure we are not accidentally up-sampling
@@ -210,9 +222,15 @@ def cellpose_segmentation(
 
         for t in reversed(write_indices):
 
+            # check to see if we should segment this frame
+            cur_flag = True
+            if has_curation_info:
+                cur_flag = curation_df_long.loc[(curation_df_long['series_number'] == well_index) &     \
+                                                (curation_df_long['time_index'] == t), 'qc_flag'].values[0]
+
             # extract image
             data_zyx_raw = data_tzyx[t]
-            if np.any(data_zyx_raw > 0):
+            if np.any(data_zyx_raw > 0) & (cur_flag == 1):
                 # rescale data
                 dims_orig = data_zyx_raw.shape
                 if xy_ds_factor > 1.0:
@@ -324,13 +342,15 @@ if __name__ == "__main__":
     cell_diameter = 10
     cellprob_threshold = 0.0
     pixel_res_raw = [2, 0.55, 0.55]
+
     # set path to CellPose model to use
-    pretrained_model = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\\cellpose_training\\20240223_tdTom\\log\\models\\log-v5"
+    pretrained_model = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/cellpose_training/20240424_tdTom/log/models/log-v3"
 
     # set read/write paths
-    root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
-    experiment_date = "20240223"
+    root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
+    experiment_date_vec = ["20240425"]
 
-    cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw,
-                          xy_ds_factor=xy_ds_factor, cell_diameter=cell_diameter,
-                          cellprob_threshold=cellprob_threshold, pretrained_model=pretrained_model, overwrite=overwrite)
+    for experiment_date in experiment_date_vec:
+        cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw,
+                              xy_ds_factor=xy_ds_factor, cell_diameter=cell_diameter, nuclear_channel=1,
+                              cellprob_threshold=cellprob_threshold, pretrained_model=pretrained_model, overwrite=overwrite)

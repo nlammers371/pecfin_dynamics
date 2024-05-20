@@ -114,10 +114,10 @@ def parse_curation_metadata(root, experiment_date):
         curation_xl = pd.ExcelFile(curation_path)
         curation_df = curation_xl.parse(curation_xl.sheet_names[0])
         curation_df_long = pd.melt(curation_df,
-                                   id_vars=["series_number", "notes", "example_flag", "follow_up_flag"],
-                                   var_name="time_string", value_name="qc_flag")
-        time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
-        curation_df_long["time_index"] = time_ind_vec
+                                   id_vars=["series_number", "notes", "tbx5a_flag", "follow_up_flag"],
+                                   var_name="time_index", value_name="qc_flag")
+        # time_ind_vec = [int(t[1:]) for t in curation_df_long["time_string"].values]
+        # curation_df_long["time_index"] = time_ind_vec
         curation_df_long = curation_df_long.rename(columns={"series_number": "nd2_series"})
 
     else:
@@ -206,7 +206,7 @@ def extract_frame_metadata(
 if __name__ == "__main__":
 
     # set path to CellPose model to use
-    root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\fin_morphodynamics\\"
+    root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\"
     experiment_date = "20240223"
 
 
