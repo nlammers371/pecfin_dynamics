@@ -26,7 +26,7 @@ scale_vec = tuple([2.0, 0.55, 0.55])
 viewer = napari.Viewer(ndisplay=3)
 
 # viewer.add_labels(im_label1, scale=scale_vec, name="bkg")
-viewer.add_image(raw_zarr[60], scale=scale_vec)
+viewer.add_image(raw_zarr[40], scale=scale_vec)
 # viewer.window.add_plugin_dock_widget(plugin_name='napari-animation')
 # viewer.add_labels(stitched_mask, name="aff labels")
 # viewer.add_labels(stitched_mask_p6, name="aff labels p6")

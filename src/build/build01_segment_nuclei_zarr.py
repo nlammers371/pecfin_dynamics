@@ -177,7 +177,7 @@ def cellpose_segmentation(
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
 
-    for well_index in range(5, len(image_list)):
+    for well_index in range(0, len(image_list)):
 
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
@@ -215,8 +215,8 @@ def cellpose_segmentation(
         else:
             write_indices = []
             for t in range(n_time_points):
-                z_flag = np.all(prob_zarr[t, :, :, :] == 0)
-                if z_flag:
+                nz_flag = np.any(prob_zarr[t, :, :, :] == 0)
+                if not nz_flag:
                     write_indices.append(t)
             write_indices = np.asarray(write_indices)
 
