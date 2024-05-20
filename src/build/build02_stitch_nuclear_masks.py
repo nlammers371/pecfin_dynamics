@@ -170,7 +170,11 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
 
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(cellpose_directory + "*_probs.zarr"))
-    for w, well in enumerate([well_list[-1]]):
+    for _, well in enumerate([well_list[-1]]):
+
+        # get well index
+        well_index = well.find("_well")
+        well_num = int(well[well_index + 5:well_index + 9])
 
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
@@ -185,12 +189,12 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
 
         # get number of time points
         if has_curation_info:
-            time_indices0 = curation_df_long.loc[(curation_df_long.well_index == w) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
+            time_indices0 = curation_df_long.loc[(curation_df_long.series_number == well_num) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
         else:
             time_indices0 = np.arange(prob_zarr.shape[0])
 
         # generate zarr store for stitched masks
-        s_mask_zarr_path = os.path.join(out_directory, file_prefix + "_labels_stitched_line.zarr")
+        s_mask_zarr_path = os.path.join(out_directory, file_prefix + "_labels_stitched.zarr")
         prev_flag = os.path.isdir(s_mask_zarr_path)
         s_mask_zarr = zarr.open(s_mask_zarr_path, mode='a', shape=prob_zarr.shape, dtype=np.uint16,
                               chunks=(1,) + prob_zarr.shape[1:])
