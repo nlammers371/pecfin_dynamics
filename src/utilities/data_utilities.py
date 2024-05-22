@@ -11,8 +11,9 @@ from torch.utils.data import Dataset
 from pythae.data.datasets import DatasetOutput
 
 class PointData(Dataset):
-    def __init__(self, root, split='train', npoints=4096, r_prob=0.25):
+    def __init__(self, root, split='train', npoints=4096, r_prob=0.25, fluo_channel=None):
         self.root = root
+        self.fluo_channel = fluo_channel
         # self.area_nums = area_nums  # i.e. '1-4' # areas 1-4
         self.split = split.lower()  # use 'test' in order to bypass augmentations
         self.npoints = npoints  # use  None to sample all the points
@@ -32,7 +33,7 @@ class PointData(Dataset):
         # get all datapaths
         # self.data_paths = []
         # for area in areas:
-        self.data_paths = glob(os.path.join(root, '**\*.csv'), recursive=True)
+        self.data_paths = sorted(glob(os.path.join(root, '**/*.csv'), recursive=True))
 
         # get unique space identifiers (area_##\\spacename_##_)
         # self.space_ids = []
@@ -46,7 +47,10 @@ class PointData(Dataset):
     def __getitem__(self, idx):
         # read data from hdf5
         space_data = pd.read_csv(self.data_paths[idx])
-        points_raw = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
+        if self.fluo_channel is None:
+            points_raw = space_data.loc[:, ["X", "Y", "Z"]].to_numpy()
+        else:
+            points_raw = space_data.loc[:, ["X", "Y", "Z", self.fluo_channel]].to_numpy()
         if "fin_label_curr" in space_data.columns:# xyz points
             targets = np.reshape(space_data.loc[:, "fin_label_curr"].to_numpy(), (points_raw.shape[0], 1))  # integer categories
         else:

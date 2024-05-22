@@ -10,72 +10,220 @@ from src.point_net.point_net import PointNetSegHead
 from skimage.measure import regionprops
 import zarr
 from src.utilities.functions import path_leaf
+from sklearn.neighbors import KDTree
+import scipy
 
-def labels_to_point_cloud(root, experiment_date, seg_model, well_num, time_int, mask, scale_vec, overwrite=False):
+def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=False, fluo_channels=None):
 
-    # check if file exists
-    point_prefix = experiment_date + f"_well{well_num:04}" + f"_time{time_int:04}"
-    point_path = os.path.join(root, "built_data", "point_clouds", experiment_date, "")
-    if not os.path.isdir(point_path):
-        os.makedirs(point_path)
+    # nucleus data directory
+    nucleus_directory = os.path.join(root, "built_data", "nucleus_data", model_name, experiment_date,  '')
+    if not os.path.isdir(nucleus_directory):
+        os.makedirs(nucleus_directory)
 
-    if (not os.path.isfile((point_path + point_prefix + "_centroids.csv"))) | overwrite:
-        # use regionprops to get centroids for each nucleus label
-        regions = regionprops(mask)
+    # get directory to stitched labels
+    mask_directory = os.path.join(root, "built_data", "stitched_labels", model_name, experiment_date, '')
 
-        if len(regions) > 0:
-            centroid_array = np.asarray([rg["Centroid"] for rg in regions])
-            centroid_array = np.multiply(centroid_array, scale_vec)
+    # raw data dir
+    raw_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
 
-            # convert to dataframe
-            point_df = pd.DataFrame(centroid_array, columns=["Z", "Y", "X"])
+    # load cueration data if we have it
+    curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
+    has_curation_info = os.path.isfile(curation_path)
+    if has_curation_info:
+        curation_df = pd.read_csv(curation_path)
+        curation_df_long = pd.melt(curation_df,
+                                   id_vars=["series_number", "notes", "tbx5a_flag", "follow_up_flag"],
+                                   var_name="time_index", value_name="qc_flag")
+        curation_df_long["time_index"] = curation_df_long["time_index"].astype(int)
 
-            # add metadata
-            point_df["experiment_date"] = experiment_date
-            point_df["seg_model"] = seg_model
-            point_df["well_num"] = well_num
-            point_df["time_int"] = time_int
-            point_df["fin_curation_flag"] = False
 
-            # save
-            point_df.to_csv(point_path + point_prefix + "_centroids.csv", index=False)
+    # get list of wells with labels to stitch
+    well_list = sorted(glob.glob(mask_directory + "*_labels_stitched.zarr"))
 
+    for well in tqdm(well_list, "Extracting fluorescence levels..."):
+
+        # get well index
+        well_index = well.find("_well")
+        well_num = int(well[well_index+5:well_index+9])
+
+        # load zarr files
+        mask_zarr = zarr.open(well, mode='r')
+
+        data_zarr_name = path_leaf(well).replace("_labels_stitched", "")
+        data_zarr = zarr.open(os.path.join(raw_directory, data_zarr_name), mode='r')
+
+        # get number of time points
+        if has_curation_info:
+            time_indices0 = curation_df_long.loc[
+                (curation_df_long.series_number == well_num) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
         else:
-            point_df = []
-    else:
-        point_df = pd.read_csv(point_path + point_prefix + "_centroids.csv")
+            time_indices0 = np.arange(mask_zarr.shape[0])
 
-    return point_df
+        indices_to_process = []
+        for t in time_indices0:
+            nz_flag = np.any(mask_zarr[t, :, :, :] != 0)
+            if nz_flag:
+                indices_to_process.append(t)
 
-def point_cloud_wrapper(root, experiment_date, seg_model, scale_vec, overwrite=False, suffix_string="_stitched.zarr"):
+        # extract useful info
+        scale_vec = data_zarr.attrs["voxel_size_um"]
 
-    # get list of zarr mask files
-    mask_dir = os.path.join(root, "built_data", "stitched_labels", seg_model, experiment_date, "")
-    mask_file_list = sorted(glob.glob(mask_dir + "*" + suffix_string))
+        for t in tqdm(indices_to_process, "Processing time points..."):
 
-    for mask_file in tqdm(mask_file_list):
+            point_prefix = experiment_date + f"_well{well_num:04}" + f"_time{t:04}"
+            save_path = os.path.join(nucleus_directory, point_prefix + "_nuclei.csv")
 
-        mask_zarr = zarr.open(mask_file, mode="r")
-        n_time_points = mask_zarr.shape[0]
+            if (not os.path.isfile(save_path)) | overwrite_flag:
+                # add layer of mask centroids
+                regions = regionprops(mask_zarr[t])
 
-        mask_name = path_leaf(mask_file)
-        ind = mask_name.find("well")
-        well_num = int(mask_name[ind + 4:ind + 8])
+                centroid_array = np.asarray([rg["Centroid"] for rg in regions])
+                centroid_array = np.multiply(centroid_array, scale_vec)
 
-        for time_int in tqdm(range(n_time_points)):
-            _ = labels_to_point_cloud(root, experiment_date, seg_model, well_num, time_int, mask_zarr[time_int], scale_vec, overwrite)
+                # convert to dataframe
+                nucleus_df = pd.DataFrame(centroid_array, columns=["Z", "Y", "X"])
+
+                # add metadata
+                nucleus_df["experiment_date"] = experiment_date
+                nucleus_df["seg_model"] = model_name
+                nucleus_df["well_num"] = well_num
+                nucleus_df["time_int"] = t
+                nucleus_df["fin_curation_flag"] = False
+
+                # add additional info
+                nucleus_df["label_i"] = np.asarray([rg.label for rg in regions])
+                nucleus_df["area"] = np.asarray([rg.area for rg in regions])
+
+                if (len(data_zarr.shape) == 5) & (fluo_channels is None):
+                    channel_dims = data_zarr.shape[0]
+                    nuclear_channel = data_zarr.attrs["nuclear_channel"]
+                    fluo_channels = [ch for ch in range(channel_dims) if ch != nuclear_channel]
+                    fluo_names = [data_zarr.attrs["channel_names"][f] for f in fluo_channels]
+
+                ################################
+                # Calculate mRNA levels in each nucleus
+                if (len(data_zarr.shape) == 5) & (fluo_channels is not None):
+
+                    image_array = np.squeeze(data_zarr[:, t, :, :, :])
+
+                    # compute each channel of image array separately to avoid dask error
+                    im_array_list = []
+                    for ch in fluo_channels:
+                        im_temp = image_array[ch, :, :, :]
+                        im_array_list.append(im_temp)
+
+                    # get mean fluorescence
+                    for f, fluo_name in enumerate(fluo_names):
+                        nucleus_df.loc[:, fluo_name + "_mean"] = scipy.ndimage.mean(im_array_list[f], mask_zarr[t], nucleus_df["label_i"].to_numpy())
+
+                    # Average across nearest neighbors for both nucleus- and cell-based mRNA estimates
+                    nn_k = 5
+                    tree = KDTree(nucleus_df[["Z", "Y", "X"]], leaf_size=2)
+                    nearest_dist, nearest_ind = tree.query(nucleus_df[["Z", "Y", "X"]], k=nn_k + 1)
+
+                    for ch in fluo_names:
+                        nucleus_df[ch + "_nn"] = np.nan
+                        nucleus_df[ch + "_mean_nn"] = np.nan
+
+                    for row in range(nucleus_df.shape[0]):
+                        nearest_indices = nearest_ind[row, :]
+                        nn_df_temp = nucleus_df.iloc[nearest_indices]
+
+                        for ch in fluo_names:
+                            # int_mean = np.mean(nn_df_temp.loc[:, ch])
+                            mean_mean = np.mean(nn_df_temp.loc[:, ch + "_mean"])
+                            # nucleus_df.loc[row, ch + "_nn"] = int_mean
+                            nucleus_df.loc[row, ch + "_mean_nn"] = mean_mean
+
+                    nucleus_df.loc[:, ["Z", "Y", "X"]]
+                    # normalize
+                    for ch in fluo_names:
+                        # int_max = np.max(nucleus_df[ch + "_nn"])
+                        mean_max = np.max(nucleus_df[ch + "_mean_nn"])
+                        # nucleus_df[ch + "_nn_norm"] = nucleus_df.loc[:, ch + "_nn"] / int_max
+                        nucleus_df[ch + "_mean_nn_norm"] = nucleus_df.loc[:, ch + "_mean_nn"] / mean_max
+
+                        # calculate distance to max fluo value
+                        arg_max = np.argmax(nucleus_df[ch + "_mean_nn"])
+                        max_zyx = nucleus_df.loc[arg_max, ["Z", "Y", "X"]].to_numpy().astype(np.float64)
+                        nucleus_df[ch + "_dist"] = np.sqrt(np.sum((nucleus_df.loc[:, ["Z", "Y", "X"]].to_numpy() - max_zyx)**2, axis=1))
 
 
-def extract_point_cloud_features(root, model_root, model_name, experiment_date, overwrite_flag=False):
 
-    outpath = os.path.join(root, "built_data", "processed_point_clouds", experiment_date, "")
+
+                # save
+                nucleus_df.to_csv(save_path, index=False)
+
+# def labels_to_point_cloud(root, experiment_date, seg_model, well_num, time_int, mask, scale_vec, overwrite=False):
+#
+#     # check if file exists
+#     point_prefix = experiment_date + f"_well{well_num:04}" + f"_time{time_int:04}"
+#     point_path = os.path.join(root, "built_data", "nucleus_data", experiment_date, seg_model,"")
+#     if not os.path.isdir(point_path):
+#         os.makedirs(point_path)
+#
+#     if (not os.path.isfile((point_path + point_prefix + "_nuclei.csv"))) | overwrite:
+#         # use regionprops to get centroids for each nucleus label
+#         regions = regionprops(mask)
+#
+#         if len(regions) > 0:
+#             centroid_array = np.asarray([rg["Centroid"] for rg in regions])
+#             centroid_array = np.multiply(centroid_array, scale_vec)
+#
+#             # convert to dataframe
+#             point_df = pd.DataFrame(centroid_array, columns=["Z", "Y", "X"])
+#
+#             # add metadata
+#             point_df["experiment_date"] = experiment_date
+#             point_df["seg_model"] = seg_model
+#             point_df["well_num"] = well_num
+#             point_df["time_int"] = time_int
+#             point_df["fin_curation_flag"] = False
+#
+#             # save
+#             point_df.to_csv(point_path + point_prefix + "_nuclei.csv", index=False)
+#
+#         else:
+#             point_df = []
+#     else:
+#         point_df = pd.read_csv(point_path + point_prefix + "_nuclei.csv")
+#
+#     return point_df
+
+# def point_cloud_wrapper(root, experiment_date, seg_model, scale_vec, overwrite=False, suffix_string="_stitched.zarr"):
+#
+#     # get list of zarr mask files
+#     mask_dir = os.path.join(root, "built_data", "stitched_labels", seg_model, experiment_date, "")
+#     mask_file_list = sorted(glob.glob(mask_dir + "*" + suffix_string))
+#
+#     for mask_file in tqdm(mask_file_list, "Extracting nucleus information..."):
+#
+#         mask_zarr = zarr.open(mask_file, mode="r")
+#         n_time_points = mask_zarr.shape[0]
+#         indices_to_process = []
+#         for t in range(n_time_points):
+#             nz_flag = np.any(mask_zarr[t, :, :, :] != 0)
+#             if nz_flag:
+#                 indices_to_process.append(t)
+#
+#         mask_name = path_leaf(mask_file)
+#         ind = mask_name.find("well")
+#         well_num = int(mask_name[ind + 4:ind + 8])
+#
+#         for time_int in tqdm(indices_to_process):
+#             _ = labels_to_point_cloud(root, experiment_date, seg_model, well_num, time_int, mask_zarr[time_int], scale_vec, overwrite)
+
+
+def extract_point_cloud_features(root, model_root, model_name, experiment_date,
+                                 fluo_channel=None, overwrite_flag=False):
+
+    outpath = os.path.join(root, "built_data", "processed_point_data", seg_model, experiment_date, "")
     if not os.path.isdir(outpath):
         os.makedirs(outpath)
 
-
     model_path = os.path.join(model_root, model_name)
     # data_root = os.path.join(root,  "built_data", "point_clouds", "_Archive", "")
-    data_root = os.path.join(root, "built_data", "point_clouds", "")
+    data_root = os.path.join(root, "built_data", "nucleus_data", seg_model, experiment_date, "")
 
     # feature selection hyperparameters
     NUM_TEST_POINTS = 4*4096
@@ -84,7 +232,7 @@ def extract_point_cloud_features(root, model_root, model_name, experiment_date, 
     n_local = 64
 
     # generate dataloader to load fin point clouds
-    point_data = PointData(data_root, split='test', npoints=NUM_TEST_POINTS)
+    point_data = PointData(data_root, split='test', npoints=NUM_TEST_POINTS, fluo_channel=fluo_channel)
     dataloader = DataLoader(point_data, batch_size=BATCH_SIZE, shuffle=True)
 
     # check for GPU
@@ -96,8 +244,7 @@ def extract_point_cloud_features(root, model_root, model_name, experiment_date, 
     model.eval()
 
     # apply to FOVs to generate training features
-    print("Extracting point features...")
-    for batch_i, batch in enumerate(tqdm(dataloader)):
+    for batch_i, batch in enumerate(tqdm(dataloader, "Extracting point features...")):
         # extract data
         points = batch["data"]
         points = torch.transpose(points, 1, 2)
@@ -108,14 +255,15 @@ def extract_point_cloud_features(root, model_root, model_name, experiment_date, 
         global_path_vec = []
         new_indices = []
         for p, path in enumerate(raw_path):
-            path_suffix = path.replace(data_root, "").split("\\")
-            date_folder = os.path.join(outpath, path_suffix[0])
-            if not os.path.isdir(date_folder):
-                os.makedirs(date_folder)
+            # path_suffix = path.replace(data_root, "").split("\\")
+            # date_folder = os.path.join(outpath, path_suffix[0])
+            # if not os.path.isdir(date_folder):
+            #     os.makedirs(date_folder)
 
-            point_path = os.path.join(date_folder, path_suffix[1])
-            global_name = path_suffix[1].replace(".csv", "_global.csv")
-            global_path = os.path.join(date_folder, global_name)
+            path_suffix = path_leaf(path)
+            point_path = os.path.join(outpath, path_suffix)
+            global_name = path_suffix.replace(".csv", "_global.csv")
+            global_path = os.path.join(outpath, global_name)
             if not os.path.isfile(point_path):
                 new_indices.append(p)
 
@@ -157,18 +305,18 @@ def extract_point_cloud_features(root, model_root, model_name, experiment_date, 
                 # make global df
                 global_df = pd.DataFrame(np.reshape(features[0, n_local:], (1, len(col_names_global))), columns=col_names_global)
 
-                point_df.to_csv(point_path_vec[p])
-                global_df.to_csv(global_path_vec[p])
+                point_df.to_csv(point_path_vec[p], index=False)
+                global_df.to_csv(global_path_vec[p], index=False)
 
 if __name__ == '__main__':
-    root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\"
-    model_root = "C:\\Users\\nlammers\\Projects\\pecfin_dynamics\\fin_morphodynamics\\src\\point_net\\trained_models\\"
-    model_name = "seg_focal_dice_iou_rot\\seg_model_89.pth"
+    root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
+    model_root = "/home/nick/projects/pecfin_dynamics/src/point_net/trained_models/"
+    model_name = "seg_focal_dice_iou_rot/seg_model_89.pth"
 
-    experiment_date = "20240223"
-    seg_model = "log-v5"
-    scale_vec = np.asarray([2.0, 0.55, 0.55])
+    experiment_date_vec = ["20240424", "20240425"]
+    seg_model = "log-v3"
     # build point cloud files
-    # point_cloud_wrapper(root, experiment_date, seg_model, scale_vec, overwrite=False)
+    for experiment_date in experiment_date_vec:
+        extract_nucleus_stats(root, experiment_date, seg_model, overwrite_flag=True)
 
-    extract_point_cloud_features(root, model_root, model_name, experiment_date=experiment_date)
+        extract_point_cloud_features(root, model_root, model_name, experiment_date=experiment_date, overwrite_flag=True)

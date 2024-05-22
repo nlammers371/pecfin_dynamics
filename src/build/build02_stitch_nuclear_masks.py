@@ -47,8 +47,7 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     mask_thresh_list = list(range(min_prob, max_prob + prob_increment, prob_increment))
     seg_hypothesis_array = np.zeros((len(mask_thresh_list),) + prob_array_rs.shape, dtype=np.uint16)
 
-    print("Calculating affinity masks...")
-    for m, mask_threshold in enumerate(tqdm(mask_thresh_list)):
+    for m, mask_threshold in enumerate(tqdm(mask_thresh_list, "Calculating affinity masks...")):
         mask_aff, _, _, _, _ = compute_masks(grad_array_rs, prob_array_rs,
                                              do_3D=True,
                                              niter=niter,
@@ -74,7 +73,7 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     # initialize
     masks_curr = seg_hypothesis_array[0]  # start with the most permissive mask
 
-    for m in tqdm(range(1, len(mask_thresh_list))):
+    for m in tqdm(range(1, len(mask_thresh_list)), "Performing affinity stitching..."):
         # get next layer of labels
         aff_labels = seg_hypothesis_array[m]
 
@@ -170,7 +169,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
 
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(cellpose_directory + "*_probs.zarr"))
-    for _, well in enumerate([well_list[-1]]):
+    for _, well in enumerate(well_list):
 
         # get well index
         well_index = well.find("_well")
@@ -206,10 +205,10 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
         else:
             write_indices = []
             for t in time_indices0:
-                nz_flag = np.any(s_mask_zarr[t, :, :, :] == 0)
+                nz_flag = np.any(s_mask_zarr[t, :, :, :] != 0)
                 if not nz_flag:
                     write_indices.append(t)
-                write_indices = np.asarray(write_indices)
+            write_indices = np.asarray(write_indices)
 
         # iterate through time points
         print("Stitching labels...")
@@ -237,7 +236,7 @@ if __name__ == "__main__":
     # root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\"
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
     scale_vec = np.asarray([2.0, 0.55, 0.55])
-    experiment_date = "20240424"
+    experiment_date = "20240425"
     model_name = "log-v3"
     overwrite = False
 
