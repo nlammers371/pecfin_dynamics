@@ -69,14 +69,12 @@ def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
     return curation_df, mlp_df
 
 
-
-
-def load_mlp_data(root, experiment_date, n_mlp_nodes, n_layers):
+def load_mlp_data(root, curation_folder, n_mlp_nodes, n_layers):
     curated_data_dir = os.path.join(root, "metadata", "fin_curation", "")
     if not os.path.isdir(curated_data_dir):
         os.makedirs(curated_data_dir)
     # mdl_path = os.path.join(curated_data_dir, experiment_date + "_MLP_mdl.joblib")
-    mlp_data_path = os.path.join(curated_data_dir, experiment_date + "_MLP_data.csv")
+    mlp_data_path = os.path.join(curated_data_dir, curation_folder, "MLP_data.csv")
 
     mdl = MLPClassifier(random_state=1, max_iter=5000, hidden_layer_sizes=(n_mlp_nodes,) * n_layers)
     if os.path.isfile(mlp_data_path):
@@ -208,7 +206,7 @@ def on_points_click(layer, event):
         return
 
 
-def curate_pec_fins(root, experiment_date, seg_model, well_num, time_int=0, fluo_label=None,
+def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num, time_int=0, fluo_label=None,
                     overwrite_flag=False, n_layers=1, n_mlp_nodes=10):
     
     # initialize global variables
@@ -226,7 +224,7 @@ def curate_pec_fins(root, experiment_date, seg_model, well_num, time_int=0, fluo
     point_df, labels_df, point_prefix, point_path_out = load_points_and_labels(root, seg_model, experiment_date, file_prefix, time_int)
 
     # check for previously-trained models and curation data
-    mlp_df, mdl, mlp_data_path = load_mlp_data(root, experiment_date, n_mlp_nodes, n_layers)
+    mlp_df, mdl, mlp_data_path = load_mlp_data(root, curation_folder, n_mlp_nodes, n_layers)
 
     # second round of global variables
     global curation_df, point_layer, global_df, pd_layer
@@ -338,10 +336,11 @@ def curate_pec_fins(root, experiment_date, seg_model, well_num, time_int=0, fluo
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240424"
+    experiment_date = "20240425"
+    curation_folder = 'tbx5a_training'
     overwrite = True
     seg_model = "log-v3"
     well_num = 17
-    curate_pec_fins(root, experiment_date=experiment_date, seg_model=seg_model, well_num=well_num,
-                    time_int=55, overwrite_flag=False, n_mlp_nodes=100, n_layers=2, fluo_label='tbx5a-StayGold')
+    curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, seg_model=seg_model, well_num=well_num,
+                    time_int=50, overwrite_flag=False, n_mlp_nodes=100, n_layers=2, fluo_label='tbx5a-StayGold')
 

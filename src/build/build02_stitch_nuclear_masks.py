@@ -219,10 +219,6 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
             # cp_mask_array = mask_zarr[time_int, :, :, :]
             grad_array = grad_zarr[time_int, :, :, :, :]
             prob_array = prob_zarr[time_int, :, :, :]
-            # cp_mask_array = cp_mask_array[:, 340:590, 90:270] #[:, 500:775, 90:435]
-            # grad_array = grad_array[:, :, 340:590, 90:270]  #[:, :, 500:775, 90:435]
-            # prob_array = prob_array[:, 340:590, 90:270]  #[:, 500:775, 90:435]
-
             # viewer = napari.view_image(prob_array, scale=tuple(scale_vec))
             # perform stitching
             stitched_labels = do_affinity_stitching(prob_array, grad_array, min_prob=-2, max_prob=8, scale_vec=scale_vec, seg_res=0.7)

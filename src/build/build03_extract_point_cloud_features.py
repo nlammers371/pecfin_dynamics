@@ -12,13 +12,18 @@ import zarr
 from src.utilities.functions import path_leaf
 from sklearn.neighbors import KDTree
 import scipy
+from sklearn.cluster import KMeans
 
-def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=False, fluo_channels=None):
+def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=False, fluo_channels=None, n_clusters=4096):
 
     # nucleus data directory
-    nucleus_directory = os.path.join(root, "built_data", "nucleus_data", model_name, experiment_date,  '')
+    nucleus_directory = os.path.join(root, "built_data", "nucleus_data", "raw_nuclei", experiment_date,  '')
     if not os.path.isdir(nucleus_directory):
         os.makedirs(nucleus_directory)
+
+    point_directory = os.path.join(root, "built_data", "nucleus_data", "point_clouds", experiment_date, '')
+    if not os.path.isdir(point_directory):
+        os.makedirs(point_directory)
 
     # get directory to stitched labels
     mask_directory = os.path.join(root, "built_data", "stitched_labels", model_name, experiment_date, '')
@@ -26,7 +31,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
     # raw data dir
     raw_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
 
-    # load cueration data if we have it
+    # load curation data if we have it
     curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
     has_curation_info = os.path.isfile(curation_path)
     if has_curation_info:
@@ -40,7 +45,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(mask_directory + "*_labels_stitched.zarr"))
 
-    for well in tqdm(well_list, "Extracting fluorescence levels..."):
+    for well in tqdm(well_list, "Extracting nucleus positions..."):
 
         # get well index
         well_index = well.find("_well")
@@ -66,14 +71,18 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                 indices_to_process.append(t)
 
         # extract useful info
-        scale_vec = data_zarr.attrs["voxel_size_um"]
+        try:
+            scale_vec = data_zarr.attrs["voxel_size_um"]
+        except:
+            scale_vec = np.asarray([2.0, 0.55, 0.55])
 
         for t in tqdm(indices_to_process, "Processing time points..."):
 
             point_prefix = experiment_date + f"_well{well_num:04}" + f"_time{t:04}"
-            save_path = os.path.join(nucleus_directory, point_prefix + "_nuclei.csv")
+            nucleus_path = os.path.join(nucleus_directory, point_prefix + "_nuclei.csv")
+            point_path = os.path.join(point_directory, point_prefix + "_nuclei.csv")
 
-            if (not os.path.isfile(save_path)) | overwrite_flag:
+            if (not os.path.isfile(point_path)) | overwrite_flag:
                 # add layer of mask centroids
                 regions = regionprops(mask_zarr[t])
 
@@ -91,7 +100,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                 nucleus_df["fin_curation_flag"] = False
 
                 # add additional info
-                nucleus_df["label_i"] = np.asarray([rg.label for rg in regions])
+                nucleus_df["nucleus_id"] = np.asarray([rg.label for rg in regions])
                 nucleus_df["area"] = np.asarray([rg.area for rg in regions])
 
                 if (len(data_zarr.shape) == 5) & (fluo_channels is None):
@@ -114,7 +123,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 
                     # get mean fluorescence
                     for f, fluo_name in enumerate(fluo_names):
-                        nucleus_df.loc[:, fluo_name + "_mean"] = scipy.ndimage.mean(im_array_list[f], mask_zarr[t], nucleus_df["label_i"].to_numpy())
+                        nucleus_df.loc[:, fluo_name + "_mean"] = scipy.ndimage.mean(im_array_list[f], mask_zarr[t], nucleus_df["nucleus_id"].to_numpy())
 
                     # Average across nearest neighbors for both nucleus- and cell-based mRNA estimates
                     nn_k = 5
@@ -122,20 +131,10 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                     nearest_dist, nearest_ind = tree.query(nucleus_df[["Z", "Y", "X"]], k=nn_k + 1)
 
                     for ch in fluo_names:
-                        nucleus_df[ch + "_nn"] = np.nan
-                        nucleus_df[ch + "_mean_nn"] = np.nan
+                        fluo_array = nucleus_df.loc[:, ch + "_mean"].to_numpy()
+                        fluo_array_nn = fluo_array[nearest_ind]
+                        nucleus_df[ch + "_mean_nn"] = np.mean(fluo_array_nn, axis=1)
 
-                    for row in range(nucleus_df.shape[0]):
-                        nearest_indices = nearest_ind[row, :]
-                        nn_df_temp = nucleus_df.iloc[nearest_indices]
-
-                        for ch in fluo_names:
-                            # int_mean = np.mean(nn_df_temp.loc[:, ch])
-                            mean_mean = np.mean(nn_df_temp.loc[:, ch + "_mean"])
-                            # nucleus_df.loc[row, ch + "_nn"] = int_mean
-                            nucleus_df.loc[row, ch + "_mean_nn"] = mean_mean
-
-                    nucleus_df.loc[:, ["Z", "Y", "X"]]
                     # normalize
                     for ch in fluo_names:
                         # int_max = np.max(nucleus_df[ch + "_nn"])
@@ -148,11 +147,18 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                         max_zyx = nucleus_df.loc[arg_max, ["Z", "Y", "X"]].to_numpy().astype(np.float64)
                         nucleus_df[ch + "_dist"] = np.sqrt(np.sum((nucleus_df.loc[:, ["Z", "Y", "X"]].to_numpy() - max_zyx)**2, axis=1))
 
+                # use k-means clustering to obtain standardized
+                n_clusters_emb = np.min([nucleus_df.shape[0], n_clusters])
+                kmeans = KMeans(n_clusters=n_clusters_emb, random_state=0, n_init="auto").fit(nucleus_df.loc[:, ["Z", "Y", "X"]])
+                nucleus_df.loc[:, "cluster_id"] = kmeans.labels_
 
-
+                # make separate point DF
+                point_cols = ["experiment_date", "seg_model", "well_num", "time_int", "cluster_id", "Z", "Y", "X"]
+                point_df = nucleus_df.loc[:, point_cols].groupby(point_cols[:-3]).mean(["Z", "Y", "X"]).reset_index()
 
                 # save
-                nucleus_df.to_csv(save_path, index=False)
+                nucleus_df.to_csv(nucleus_path, index=False)
+                point_df.to_csv(point_path, index=False)
 
 # def labels_to_point_cloud(root, experiment_date, seg_model, well_num, time_int, mask, scale_vec, overwrite=False):
 #
@@ -217,16 +223,16 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 def extract_point_cloud_features(root, model_root, model_name, experiment_date,
                                  fluo_channel=None, overwrite_flag=False):
 
-    outpath = os.path.join(root, "built_data", "processed_point_data", seg_model, experiment_date, "")
+    outpath = os.path.join(root, "built_data", "nucleus_data", "processed_point_clouds", experiment_date, "")
     if not os.path.isdir(outpath):
         os.makedirs(outpath)
 
     model_path = os.path.join(model_root, model_name)
     # data_root = os.path.join(root,  "built_data", "point_clouds", "_Archive", "")
-    data_root = os.path.join(root, "built_data", "nucleus_data", seg_model, experiment_date, "")
+    data_root = os.path.join(root, "built_data", "nucleus_data", "point_clouds", experiment_date, "")
 
     # feature selection hyperparameters
-    NUM_TEST_POINTS = 4*4096
+    NUM_TEST_POINTS = 4096
     BATCH_SIZE = 16
     NUM_CLASSES = 14
     n_local = 64
@@ -255,10 +261,7 @@ def extract_point_cloud_features(root, model_root, model_name, experiment_date,
         global_path_vec = []
         new_indices = []
         for p, path in enumerate(raw_path):
-            # path_suffix = path.replace(data_root, "").split("\\")
-            # date_folder = os.path.join(outpath, path_suffix[0])
-            # if not os.path.isdir(date_folder):
-            #     os.makedirs(date_folder)
+
 
             path_suffix = path_leaf(path)
             point_path = os.path.join(outpath, path_suffix)
@@ -313,8 +316,8 @@ if __name__ == '__main__':
     model_root = "/home/nick/projects/pecfin_dynamics/src/point_net/trained_models/"
     model_name = "seg_focal_dice_iou_rot/seg_model_89.pth"
 
-    experiment_date_vec = ["20240424", "20240425"]
-    seg_model = "log-v3"
+    experiment_date_vec = ["20240223"]
+    seg_model = "log-v5"
     # build point cloud files
     for experiment_date in experiment_date_vec:
         extract_nucleus_stats(root, experiment_date, seg_model, overwrite_flag=True)
