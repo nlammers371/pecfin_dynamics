@@ -211,7 +211,7 @@ def cellpose_segmentation(
 
         if has_curation_info:
             time_indices0 = curation_df_long.loc[(curation_df_long['series_number'] == well_index) & \
-                                                 (curation_df_long['qc_flag'] == 1) ,'time_index'].values
+                                                 (curation_df_long['qc_flag'] < 2), 'time_index'].values
         # determine which indices to segment
         if overwrite | (not prev_flag):
             write_indices = time_indices0
@@ -323,7 +323,7 @@ if __name__ == "__main__":
 
     # set read/write paths
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date_vec = ["20240425"]
+    experiment_date_vec = ["20240424", "20240425"]
 
     for experiment_date in experiment_date_vec:
         cellpose_segmentation(root=root, experiment_date=experiment_date, pixel_res_raw=pixel_res_raw,

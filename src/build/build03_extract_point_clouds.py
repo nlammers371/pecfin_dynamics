@@ -13,6 +13,62 @@ from src.utilities.functions import path_leaf
 from sklearn.neighbors import KDTree
 import scipy
 from sklearn.cluster import KMeans
+import math
+
+
+def ellipsoid_axis_lengths(central_moments):
+    """Compute ellipsoid major, intermediate and minor axis length.
+
+    Parameters
+    ----------
+    central_moments : ndarray
+        Array of central moments as given by ``moments_central`` with order 2.
+
+    Returns
+    -------
+    axis_lengths: tuple of float
+        The ellipsoid axis lengths in descending order.
+    """
+    m0 = central_moments[0, 0, 0]
+    sxx = central_moments[2, 0, 0] / m0
+    syy = central_moments[0, 2, 0] / m0
+    szz = central_moments[0, 0, 2] / m0
+    sxy = central_moments[1, 1, 0] / m0
+    sxz = central_moments[1, 0, 1] / m0
+    syz = central_moments[0, 1, 1] / m0
+    S = np.asarray([[sxx, sxy, sxz], [sxy, syy, syz], [sxz, syz, szz]])
+    # determine eigenvalues in descending order
+    eigvals = np.sort(np.linalg.eigvalsh(S))[::-1]
+    eigvals[eigvals < 0] = 0
+    return tuple([math.sqrt(5.0 * e) for e in eigvals])
+
+
+def ellipsoid_axis_loadings(central_moments):
+    """Compute ellipsoid major, intermediate and minor axis length.
+
+    Parameters
+    ----------
+    central_moments : ndarray
+        Array of central moments as given by ``moments_central`` with order 2.
+
+    Returns
+    -------
+    axis_lengths: tuple of float
+        The ellipsoid axis lengths in descending order.
+    """
+    m0 = central_moments[0, 0, 0]
+    sxx = central_moments[2, 0, 0] / m0
+    syy = central_moments[0, 2, 0] / m0
+    szz = central_moments[0, 0, 2] / m0
+    sxy = central_moments[1, 1, 0] / m0
+    sxz = central_moments[1, 0, 1] / m0
+    syz = central_moments[0, 1, 1] / m0
+    S = np.asarray([[sxx, sxy, sxz], [sxy, syy, syz], [sxz, syz, szz]])
+    # # determine eigenvalues in descending order
+    eigvals, eigvecs = np.linalg.eig(S)
+    eigpower = np.sum(np.multiply(np.asarray(eigvals)[np.newaxis, :]**2, np.asarray(np.abs(eigvecs))), axis=1)
+    eigpower = eigpower / np.sum(np.abs(eigpower))
+    return eigpower
 
 def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=False, fluo_channels=None, n_clusters=4096):
 
@@ -80,11 +136,13 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 
             point_prefix = experiment_date + f"_well{well_num:04}" + f"_time{t:04}"
             nucleus_path = os.path.join(nucleus_directory, point_prefix + "_nuclei.csv")
-            point_path = os.path.join(point_directory, point_prefix + "_nuclei.csv")
+            point_path = os.path.join(point_directory, point_prefix + "_points.csv")
 
             if (not os.path.isfile(point_path)) | overwrite_flag:
                 # add layer of mask centroids
-                regions = regionprops(mask_zarr[t])
+                # NL: note that this techincally should factor in pixel dims, but I've found that z distortion
+                #     compromises shape measures
+                regions = regionprops(mask_zarr[t])#, spacing=tuple(scale_vec))
 
                 centroid_array = np.asarray([rg["Centroid"] for rg in regions])
                 centroid_array = np.multiply(centroid_array, scale_vec)
@@ -101,13 +159,45 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 
                 # add additional info
                 nucleus_df["nucleus_id"] = np.asarray([rg.label for rg in regions])
-                nucleus_df["area"] = np.asarray([rg.area for rg in regions])
+                nucleus_df["size"] = np.asarray([rg.area for rg in regions])
+
+                # remove very small masks
+                size_filter = nucleus_df["size"].to_numpy() >= 15
+                nucleus_df = nucleus_df.loc[size_filter, :]
+                regions = [regions[i] for i in range(len(regions)) if size_filter[i]]
+
+                # add nucleus shape info
+                nucleus_df[["e0", "e1", "e2"]] = np.asarray(
+                    [ellipsoid_axis_lengths(rg["moments_central"]) for rg in regions])
+                p_array = np.asarray([ellipsoid_axis_loadings(rg["moments_central"]) for rg in regions])
+                # if np.any(np.iscomplex(p_array)):
+                #     print("sigh")
+                nucleus_df[["pZ", "pY", "pX"]] = np.real(p_array)
+                nucleus_df["eccentricity"] = np.divide(nucleus_df["e0"].to_numpy(), np.sqrt(
+                    np.sum(nucleus_df.loc[:, ["e0", "e1", "e2"]].to_numpy() ** 2, axis=1)))  # 1 - np.divide(nucleus_df["size"], (1.33 * np.pi * nucleus_df["e0"]**3))
+                nucleus_df["eccentricity"] = (nucleus_df["eccentricity"] - 1 / np.sqrt(3)) / (1 - 1 / np.sqrt(3))
+                nucleus_df.loc[np.isnan(nucleus_df["eccentricity"]), "eccentricity"] = 0
+                nucleus_df.loc[np.isnan(nucleus_df["eccentricity"]), ["pX", "pY", "pZ"]] = 0
+
+                # perform NN smoothing
+                nn_k = 5
+                tree = KDTree(nucleus_df[["Z", "Y", "X"]], leaf_size=2)
+                nearest_dist, nearest_ind = tree.query(nucleus_df[["Z", "Y", "X"]], k=nn_k + 1)
+
+                ch_list = ["pZ", "pY", "pX", "size", "eccentricity"]
+                for ch in ch_list:
+                    p_array = nucleus_df.loc[:, ch].to_numpy()
+                    p_array_nn = p_array[nearest_ind]
+                    nucleus_df[ch + "_nn"] = np.nanmean(p_array_nn, axis=1)
 
                 if (len(data_zarr.shape) == 5) & (fluo_channels is None):
                     channel_dims = data_zarr.shape[0]
                     nuclear_channel = data_zarr.attrs["nuclear_channel"]
                     fluo_channels = [ch for ch in range(channel_dims) if ch != nuclear_channel]
                     fluo_names = [data_zarr.attrs["channel_names"][f] for f in fluo_channels]
+
+                elif fluo_channels is None:
+                    fluo_names = []
 
                 ################################
                 # Calculate mRNA levels in each nucleus
@@ -126,14 +216,14 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                         nucleus_df.loc[:, fluo_name + "_mean"] = scipy.ndimage.mean(im_array_list[f], mask_zarr[t], nucleus_df["nucleus_id"].to_numpy())
 
                     # Average across nearest neighbors for both nucleus- and cell-based mRNA estimates
-                    nn_k = 5
-                    tree = KDTree(nucleus_df[["Z", "Y", "X"]], leaf_size=2)
-                    nearest_dist, nearest_ind = tree.query(nucleus_df[["Z", "Y", "X"]], k=nn_k + 1)
+                    # nn_k = 5
+                    # tree = KDTree(nucleus_df[["Z", "Y", "X"]], leaf_size=2)
+                    # nearest_dist, nearest_ind = tree.query(nucleus_df[["Z", "Y", "X"]], k=nn_k + 1)
 
                     for ch in fluo_names:
                         fluo_array = nucleus_df.loc[:, ch + "_mean"].to_numpy()
                         fluo_array_nn = fluo_array[nearest_ind]
-                        nucleus_df[ch + "_mean_nn"] = np.mean(fluo_array_nn, axis=1)
+                        nucleus_df[ch + "_mean_nn"] = np.nanmean(fluo_array_nn, axis=1)
 
                     # normalize
                     for ch in fluo_names:
@@ -154,7 +244,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 
                 # make separate point DF
                 point_cols = ["experiment_date", "seg_model", "well_num", "time_int", "cluster_id"]
-                mean_cols = ["Z", "Y", "X"]
+                mean_cols = ["Z", "Y", "X", "pZ_nn", "pY_nn", "pX_nn", "size", "eccentricity"]
                 fluo_cols = []
                 for ch in fluo_names:
                     fluo_cols.append(ch + "_mean_nn")
@@ -162,7 +252,8 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
                 point_df = nucleus_df.loc[:, point_cols + mean_cols + fluo_cols].groupby(point_cols).mean(mean_cols + fluo_cols).reset_index()
                 point_df.loc[:, fluo_cols] = point_df.loc[:, fluo_cols] - np.min(point_df.loc[:, fluo_cols], axis=0)
                 point_df.loc[:, fluo_cols] = np.divide(point_df.loc[:, fluo_cols], np.max(point_df.loc[:, fluo_cols], axis=0))
-
+                if np.any(np.isnan(point_df.loc[:, mean_cols])):
+                    print("wtf")
                 # save
                 nucleus_df.to_csv(nucleus_path, index=False)
                 point_df.to_csv(point_path, index=False)
@@ -171,8 +262,8 @@ def extract_nucleus_stats(root, experiment_date, model_name, overwrite_flag=Fals
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 
-    experiment_date_vec = ["20240424", "20240425", "20240223"]
-    seg_model = "log-v3"
+    experiment_date_vec = ["20240223"] #["20240424", "20240425", "20240223"]
+    seg_model_vec = ["log-v5"] #["log-v3", "log-v3", "log-v5"]
     # build point cloud files
-    for experiment_date in experiment_date_vec:
-        extract_nucleus_stats(root, experiment_date, seg_model, overwrite_flag=True)
+    for e, experiment_date in enumerate(experiment_date_vec):
+        extract_nucleus_stats(root, experiment_date, seg_model_vec[e], overwrite_flag=True)

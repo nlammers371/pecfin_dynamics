@@ -242,12 +242,12 @@ class PointNetRegHead(nn.Module):
         # pass through shared MLP
         x = self.bn1(F.relu(self.conv1(x)))
         x = self.bn2(F.relu(self.conv2(x)))
-        x = self.bn3(F.relu(self.conv3(x)))
-        x = self.conv4(x)
+        x0 = self.bn3(F.relu(self.conv3(x)))
+        x1 = self.conv4(x0)
 
-        x = x.transpose(2, 1)
+        x1 = x1.transpose(2, 1)
         
-        return x, crit_idxs, A_feat
+        return x1, crit_idxs, A_feat, x0
 
     
 # ============================================================================

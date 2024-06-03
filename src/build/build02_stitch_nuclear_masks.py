@@ -148,12 +148,13 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     return masks_out_rs
 
 
-def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
+def stitch_cellpose_labels(root, model_name, experiment_date, thresh_range=np.arange(-8, 12, 4), overwrite=False):
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
-
+    # get path to raw zarr data
+    data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
     # make directory to write stitched labels
-    out_directory = os.path.join(root, "built_data", "stitched_labels", model_name, experiment_date, '')
+    out_directory = os.path.join(root, "built_data", "mask_stacks", model_name, experiment_date, '')
     if not os.path.isdir(out_directory):
         os.makedirs(out_directory)
 
@@ -178,11 +179,12 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
         print("Stitching data from " + file_prefix)
+        data_name = os.path.join(data_directory, file_prefix + ".zarr")
         prob_name = os.path.join(cellpose_directory, file_prefix + "_probs.zarr")
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
         # mask_name = os.path.join(cellpose_directory, file_prefix + "_labels.zarr")
 
-        # mask_zarr = zarr.open(mask_name, mode="r")
+        data_zarr = zarr.open(data_name, mode="r")
         prob_zarr = zarr.open(prob_name, mode="r")
         grad_zarr = zarr.open(grad_name, mode="r")
 
@@ -193,10 +195,10 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
             time_indices0 = np.arange(prob_zarr.shape[0])
 
         # generate zarr store for stitched masks
-        s_mask_zarr_path = os.path.join(out_directory, file_prefix + "_labels_stitched.zarr")
+        s_mask_zarr_path = os.path.join(out_directory, file_prefix + "_mask_stacks.zarr")
         prev_flag = os.path.isdir(s_mask_zarr_path)
-        s_mask_zarr = zarr.open(s_mask_zarr_path, mode='a', shape=prob_zarr.shape, dtype=np.uint16,
-                              chunks=(1,) + prob_zarr.shape[1:])
+        s_mask_zarr = zarr.open(s_mask_zarr_path, mode='a', shape=(1 + len(thresh_range),) + prob_zarr.shape,
+                                dtype=np.uint16, chunks=(1, 1,) + prob_zarr.shape[1:])
 
         # determine which indices to stitch
         print("Determining which time points need stitching...")
@@ -221,7 +223,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, overwrite=False):
             prob_array = prob_zarr[time_int, :, :, :]
             # viewer = napari.view_image(prob_array, scale=tuple(scale_vec))
             # perform stitching
-            stitched_labels = do_affinity_stitching(prob_array, grad_array, min_prob=-2, max_prob=8, scale_vec=scale_vec, seg_res=0.7)
+            stitched_labels = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec, seg_res=0.7) # NL: these were used for 202404 min_prob=-2, max_prob=8,
             # stitched_labels_thresh = do_threshold_stitching(prob_array, scale_vec, max_prob=16)
 
             # save
@@ -232,8 +234,8 @@ if __name__ == "__main__":
     # root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\"
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
     scale_vec = np.asarray([2.0, 0.55, 0.55])
-    experiment_date = "20240425"
-    model_name = "log-v3"
+    experiment_date = "20240223"
+    model_name = "log-v5"
     overwrite = False
 
     stitch_cellpose_labels(root, model_name, experiment_date, overwrite)

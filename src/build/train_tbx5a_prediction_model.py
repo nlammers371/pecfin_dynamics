@@ -89,7 +89,7 @@ def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, lear
             optimizer.zero_grad()
 
             # get softmax predictions
-            preds, _, _ = model(points)
+            preds, _, _, _ = model(points)
     
             # calculate loss
             loss = model_loss(preds.float(), levels.float())
@@ -103,7 +103,7 @@ def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, lear
 
         train_loss.append(np.mean(_train_loss))
 
-        print(f'Epoch: {epoch} - Train Loss: {train_loss[-1]:.4f}')
+        print(f'Epoch: {epoch} - Train Loss: {np.mean(train_loss[-5:]):.4f}')
 
         with torch.no_grad():
             # apply to FOVs to generate training features
@@ -120,7 +120,7 @@ def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, lear
                 levels = levels.to(device)
 
                 # get softmax predictions
-                preds, _, _ = model(points)
+                preds, _, _, _ = model(points)
 
                 # calculate loss
                 loss = model_loss(preds, levels)
@@ -130,15 +130,15 @@ def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, lear
 
             valid_loss.append(np.mean(_valid_loss))
 
-            print(f'Epoch: {epoch} - valid Loss: {valid_loss[-1]:.4f}')
+            print(f'Epoch: {epoch} - valid Loss: {np.mean(valid_loss[-5:]):.4f}')
 
             # save best models
-            if valid_loss[-1] < best_loss:
-                best_loss = valid_loss[-1]
-                torch.save(model.state_dict(), os.path.join(save_path, f'seg_model.pth'))
+            if np.mean(valid_loss[-5:]) < best_loss:
+                best_loss = np.mean(valid_loss[-5:])
+                torch.save(model.state_dict(), os.path.join(save_path, f'seg_model_{epoch:04}.pth'))
 
     # save training loss info
-    loss_df = pd.DataFrame(np.arange(num_epochs), columns="epoch")
+    loss_df = pd.DataFrame(np.arange(num_epochs), columns=["epoch"])
     loss_df['train_loss'] = train_loss
     loss_df['valid_loss'] = valid_loss
     loss_df.to_csv(os.path.join(save_path, 'train_loss.csv'))
@@ -147,7 +147,7 @@ def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, lear
 
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    fluo_channel = "tbx5a-StayGold_mean"
+    fluo_channel = "tbx5a-StayGold_mean_nn"
     experiment_dates = ["20240424", "20240425"]
 
     # build point cloud files
