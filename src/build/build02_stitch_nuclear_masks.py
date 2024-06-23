@@ -13,8 +13,11 @@ import pandas as pd
 import glob2 as glob
 
 
-def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_prob=-8, seg_res=None,
-                            prob_increment=4, niter=100, min_mask_size=25, max_mask_size=1e5):
+def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_thresh_range=None,
+                                                    niter=100, min_mask_size=25, max_mask_size=1e5):
+
+    if prob_thresh_range is None:
+        raise Exception("No threshold range was provided")
 
     # get resizing info
     shape_orig = np.asarray(prob_array.shape)
@@ -44,10 +47,10 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     prob_array_rs = zoom(prob_array, zoom_factor, order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
 
     # list of prob thresholds to use
-    mask_thresh_list = list(range(min_prob, max_prob + prob_increment, prob_increment))
-    seg_hypothesis_array = np.zeros((len(mask_thresh_list),) + prob_array_rs.shape, dtype=np.uint16)
+    # prob_thresh_range = list(range(min_prob, max_prob + prob_increment, prob_increment))
+    seg_hypothesis_array = np.zeros((len(prob_thresh_range),) + prob_array_rs.shape, dtype=np.uint16)
 
-    for m, mask_threshold in enumerate(tqdm(mask_thresh_list, "Calculating affinity masks...")):
+    for m, mask_threshold in enumerate(tqdm(prob_thresh_range, "Calculating affinity masks...")):
         mask_aff, _, _, _, _ = compute_masks(grad_array_rs, prob_array_rs,
                                              do_3D=True,
                                              niter=niter,
@@ -73,7 +76,7 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     # initialize
     masks_curr = seg_hypothesis_array[0]  # start with the most permissive mask
 
-    for m in tqdm(range(1, len(mask_thresh_list)), "Performing affinity stitching..."):
+    for m in tqdm(range(1, len(prob_thresh_range)), "Performing affinity stitching..."):
         # get next layer of labels
         aff_labels = seg_hypothesis_array[m]
 
@@ -145,20 +148,23 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, max_prob=12, min_pr
     masks_out_rs = zoom(masks_curr, zoom_factor**-1, order=0)
     masks_out_rs = morphology.remove_small_objects(masks_out_rs, min_mask_size)
 
-    return masks_out_rs
+    # resize each hypothesis
+    seg_hypothesis_array_rs = zoom(seg_hypothesis_array, (1,) + tuple(zoom_factor**-1), order=0)
+
+    return masks_out_rs, seg_hypothesis_array_rs
 
 
-def stitch_cellpose_labels(root, model_name, experiment_date, thresh_range=np.arange(-8, 12, 4), overwrite=False):
+def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=np.arange(-8, 12, 4), overwrite=False):
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     # get path to raw zarr data
-    data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
+    # data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
     # make directory to write stitched labels
     out_directory = os.path.join(root, "built_data", "mask_stacks", model_name, experiment_date, '')
     if not os.path.isdir(out_directory):
         os.makedirs(out_directory)
 
-    # load cueration data if we have it
+    # load curation data if we have it
     curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
     has_curation_info = os.path.isfile(curation_path)
     if has_curation_info:
@@ -179,26 +185,33 @@ def stitch_cellpose_labels(root, model_name, experiment_date, thresh_range=np.ar
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
         print("Stitching data from " + file_prefix)
-        data_name = os.path.join(data_directory, file_prefix + ".zarr")
+        # data_name = os.path.join(data_directory, file_prefix + ".zarr")
         prob_name = os.path.join(cellpose_directory, file_prefix + "_probs.zarr")
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
         # mask_name = os.path.join(cellpose_directory, file_prefix + "_labels.zarr")
 
-        data_zarr = zarr.open(data_name, mode="r")
+        # data_zarr = zarr.open(data_name, mode="r")
         prob_zarr = zarr.open(prob_name, mode="r")
         grad_zarr = zarr.open(grad_name, mode="r")
 
         # get number of time points
-        if has_curation_info:
-            time_indices0 = curation_df_long.loc[(curation_df_long.series_number == well_num) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
-        else:
-            time_indices0 = np.arange(prob_zarr.shape[0])
+        # if has_curation_info:
+        #     time_indices0 = curation_df_long.loc[(curation_df_long.series_number == well_num) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
+        # else:
+        time_indices0 = np.arange(prob_zarr.shape[0])
 
         # generate zarr store for stitched masks
-        s_mask_zarr_path = os.path.join(out_directory, file_prefix + "_mask_stacks.zarr")
-        prev_flag = os.path.isdir(s_mask_zarr_path)
-        s_mask_zarr = zarr.open(s_mask_zarr_path, mode='a', shape=(1 + len(thresh_range),) + prob_zarr.shape,
+        multi_mask_zarr_path = os.path.join(out_directory, file_prefix + "_mask_stacks.zarr")
+        aff_mask_zarr_path = os.path.join(out_directory, file_prefix + "_mask_aff.zarr")
+        prev_flag = os.path.isdir(multi_mask_zarr_path)
+        
+        # initialize zarr file to save mask hierarchy
+        multi_mask_zarr = zarr.open(multi_mask_zarr_path, mode='a', shape=(prob_zarr.shape[0],) + (len(prob_thresh_range),) + tuple(prob_zarr.shape[1:]),
                                 dtype=np.uint16, chunks=(1, 1,) + prob_zarr.shape[1:])
+        
+        # initialize zarr to save current best mask
+        aff_mask_zarr = zarr.open(aff_mask_zarr_path, mode='a', shape=prob_zarr.shape,
+                                    dtype=np.uint16, chunks=(1,) + prob_zarr.shape[1:])
 
         # determine which indices to stitch
         print("Determining which time points need stitching...")
@@ -207,7 +220,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, thresh_range=np.ar
         else:
             write_indices = []
             for t in time_indices0:
-                nz_flag = np.any(s_mask_zarr[t, :, :, :] != 0)
+                nz_flag = np.any(multi_mask_zarr[t, :, :, :] != 0)
                 if not nz_flag:
                     write_indices.append(t)
             write_indices = np.asarray(write_indices)
@@ -223,11 +236,12 @@ def stitch_cellpose_labels(root, model_name, experiment_date, thresh_range=np.ar
             prob_array = prob_zarr[time_int, :, :, :]
             # viewer = napari.view_image(prob_array, scale=tuple(scale_vec))
             # perform stitching
-            stitched_labels = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec, seg_res=0.7) # NL: these were used for 202404 min_prob=-2, max_prob=8,
+            stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec, seg_res=0.7) # NL: these were used for 202404 min_prob=-2, max_prob=8,
             # stitched_labels_thresh = do_threshold_stitching(prob_array, scale_vec, max_prob=16)
 
             # save
-            s_mask_zarr[time_int] = stitched_labels
+            multi_mask_zarr[time_int] = mask_stack
+            aff_mask_zarr[time_int] = stitched_labels
 
 
 if __name__ == "__main__":

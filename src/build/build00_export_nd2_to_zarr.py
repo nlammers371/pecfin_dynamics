@@ -13,7 +13,7 @@ from tqdm import tqdm
 from src.utilities.register_image_stacks import register_timelapse
 from src.utilities.extract_frame_metadata import extract_frame_metadata
 
-def export_nd2_to_zarr(root,experiment_date, overwrite_flag, nuclear_channel=None, channel_names=None):
+def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False, nuclear_channel=None, channel_names=None):
 
     out_dir = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
     if not os.path.isdir(out_dir):
@@ -101,9 +101,10 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, nuclear_channel=Non
     imObject.close()
 
 if __name__ == '__main__':
-    experiment_date = "20240425"
+    experiment_date_vec = ["20240619", "20240620"]
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
     overwrite_flag = True
     nuclear_channel = 0
-    channel_names = ["H2B-tdTom", "tbx5a-StayGold"]
-    export_nd2_to_zarr(root, experiment_date, overwrite_flag, nuclear_channel=0, channel_names=channel_names)
+    channel_names = ["H2B-tdTom"]
+    for experiment_date in experiment_date_vec:
+        export_nd2_to_zarr(root, experiment_date, overwrite_flag, nuclear_channel=0, channel_names=channel_names)

@@ -199,7 +199,7 @@ def extract_frame_metadata(
     well_df["estimated_stage_hpf"] = well_df["start_age_hpf"] + well_df["time"]/3600
 
     # save
-    well_df.to_csv(os.path.join(root, "metadata", experiment_date + "_master_metadata_df.csv"), index=False)
+    well_df.to_csv(os.path.join(root, "metadata", "frame_metadata", experiment_date + "_master_metadata_df.csv"), index=False)
 
     return metadata
 
