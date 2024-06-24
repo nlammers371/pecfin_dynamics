@@ -68,7 +68,10 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
         else:
             write_indices = []
             for t in tqdm(range(n_time_points), "Checking which frames to segment..."):
-                nz_flag_to = np.any(well_zarr[t] != 0)
+                if multichannel_flag:
+                    nz_flag_to = np.any(well_zarr[0, t] != 0)
+                else:
+                    nz_flag_to = np.any(well_zarr[t] != 0)
                 if not nz_flag_to:  # if the cellpose output is all zeros
                     write_indices.append(t)
 

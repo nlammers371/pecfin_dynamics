@@ -120,7 +120,6 @@ def cellpose_segmentation(
     pretrained_model: Optional[str] = None,
     overwrite: Optional[bool] = False,
     xy_ds_factor: Optional[float] = 1.0,
-    pixel_res_raw=None,
     nuclear_channel: int = 0,
 ) -> Dict[str, Any]:
     """
@@ -152,9 +151,9 @@ def cellpose_segmentation(
     # Read useful parameters from metadata
     min_size = 5  # let's be conservative here     # (cell_diameter/4)**3 / xy_ds_factor**2
 
-    # if tiff_stack_mode:
-    if pixel_res_raw is None:
-        raise Exception("User must input pixel resolutions if using tiff stack mode")
+    # # if tiff_stack_mode:
+    # if pixel_res_raw is None:
+    #     raise Exception("User must input pixel resolutions if using tiff stack mode")
 
     # path to zarr files
     data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
@@ -190,6 +189,7 @@ def cellpose_segmentation(
 
         # make sure we are not accidentally up-sampling
         assert xy_ds_factor >= 1.0
+        pixel_res_raw = data_tzyx.attrs["voxel_size_um"]
         anisotropy_raw = pixel_res_raw[0] / pixel_res_raw[1]
 
         # generate zarr files
@@ -209,9 +209,23 @@ def cellpose_segmentation(
         prob_zarr = zarr.open(prob_zarr_path, mode='a', shape=data_tzyx.shape, dtype=np.float32,
                               chunks=(1,) + data_tzyx.shape[1:])
 
-        if has_curation_info:
-            time_indices0 = curation_df_long.loc[(curation_df_long['series_number'] == well_index) & \
-                                                 (curation_df_long['qc_flag'] < 2), 'time_index'].values
+        # transfer metadata from raw data to cellpose products
+        meta_keys = data_tzyx.attrs.keys()
+        for meta_key in meta_keys:
+            prob_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
+            mask_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
+            grad_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
+
+        prob_zarr.attrs["model_path"] = pretrained_model
+        mask_zarr.attrs["model_path"] = pretrained_model
+        grad_zarr.attrs["model_path"] = pretrained_model
+
+        # if has_curation_info:
+        #     time_indices0 = curation_df_long.loc[(curation_df_long['series_number'] == well_index) & \
+        #                                          (curation_df_long['qc_flag'] < 2), 'time_index'].values
+
+        time_indices0 = range(data_tzyx.shape[0])
+
         # determine which indices to segment
         if overwrite | (not prev_flag):
             write_indices = time_indices0
@@ -227,85 +241,90 @@ def cellpose_segmentation(
 
             # extract image
             data_zyx_raw = data_tzyx[t]
-            # rescale data
-            dims_orig = data_zyx_raw.shape
-            if xy_ds_factor > 1.0:
-                dims_new = np.round([dims_orig[0], dims_orig[1]/xy_ds_factor, dims_orig[2]/xy_ds_factor]).astype(int)
-                data_zyx = resize(data_zyx_raw, dims_new, order=1)
-            else:
-                dims_new = dims_orig
-                data_zyx = data_zyx_raw.copy()
 
-            if ("log" in model_name) or ("bkg" in model_name):
-                im_log, im_bkg = calculate_LoG(data_zyx=data_zyx, scale_vec=pixel_res_raw)
-            if "log" in model_name:
-                data_zyx = im_log
-            elif "bkg" in model_name:
-                print("bkg")
-                data_zyx = im_bkg
+            if np.any(data_zyx_raw > 0):
+                # rescale data
+                dims_orig = data_zyx_raw.shape
+                if xy_ds_factor > 1.0:
+                    dims_new = np.round([dims_orig[0], dims_orig[1]/xy_ds_factor, dims_orig[2]/xy_ds_factor]).astype(int)
+                    data_zyx = resize(data_zyx_raw, dims_new, order=1)
+                else:
+                    dims_new = dims_orig
+                    data_zyx = data_zyx_raw.copy()
 
-            anisotropy = anisotropy_raw * dims_new[1] / dims_orig[1]
+                if ("log" in model_name) or ("bkg" in model_name):
+                    im_log, im_bkg = calculate_LoG(data_zyx=data_zyx, scale_vec=pixel_res_raw)
+                if "log" in model_name:
+                    data_zyx = im_log
+                elif "bkg" in model_name:
+                    print("bkg")
+                    data_zyx = im_bkg
 
-            # Select 2D/3D behavior and set some parameters
-            do_3D = data_zyx.shape[0] > 1
+                anisotropy = anisotropy_raw * dims_new[1] / dims_orig[1]
 
-            # Preliminary checks on Cellpose model
-            if pretrained_model is None:
-                if model_type not in ["nuclei", "cyto2", "cyto"]:
-                    raise ValueError(f"ERROR model_type={model_type} is not allowed.")
-            else:
-                if not os.path.exists(pretrained_model):
-                    raise ValueError(f"{pretrained_model=} does not exist.")
+                # Select 2D/3D behavior and set some parameters
+                do_3D = data_zyx.shape[0] > 1
 
-            logging.info(
-               f"mask will have shape {data_zyx.shape} "
-            )
+                # Preliminary checks on Cellpose model
+                if pretrained_model is None:
+                    if model_type not in ["nuclei", "cyto2", "cyto"]:
+                        raise ValueError(f"ERROR model_type={model_type} is not allowed.")
+                else:
+                    if not os.path.exists(pretrained_model):
+                        raise ValueError(f"{pretrained_model=} does not exist.")
 
-            # Initialize cellpose
-            gpu = use_gpu()
-            if pretrained_model:
-                model = models.CellposeModel(
-                    gpu=gpu, pretrained_model=pretrained_model
+                logging.info(
+                   f"mask will have shape {data_zyx.shape} "
                 )
+
+                # Initialize cellpose
+                gpu = use_gpu()
+                if pretrained_model:
+                    model = models.CellposeModel(
+                        gpu=gpu, pretrained_model=pretrained_model
+                    )
+                else:
+                    model = models.CellposeModel(gpu=gpu, model_type=model_type)
+
+                # Initialize other things
+                logging.info(f"Start cellpose_segmentation task for {zarr_path}")
+                logging.info(f"do_3D: {do_3D}")
+                logging.info(f"use_gpu: {gpu}")
+                logging.info(f"model_type: {model_type}")
+                logging.info(f"pretrained_model: {pretrained_model}")
+                logging.info(f"anisotropy: {anisotropy}")
+
+                # Execute illumination correction
+                image_mask, image_probs, image_grads = segment_FOV(
+                    data_zyx, #data_zyx.compute(),
+                    model=model,
+                    do_3D=do_3D,
+                    anisotropy=anisotropy,
+                    label_dtype=np.uint32,
+                    diameter=cell_diameter / xy_ds_factor,
+                    cellprob_threshold=cellprob_threshold,
+                    flow_threshold=flow_threshold,
+                    min_size=min_size,
+                    pretrain_flag=(pretrained_model != None)
+                )
+
+                if xy_ds_factor > 1.0:
+                    image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
+                    image_probs_out = resize(image_probs, dims_orig, order=1)
+                    image_grads_out = resize(image_grads, (3,) + dims_orig, order=1)
+                else:
+                    image_mask_out = image_mask
+                    image_probs_out = image_probs
+                    image_grads_out = image_grads
+
+                mask_zarr[t] = image_mask_out
+                prob_zarr[t] = image_probs_out
+                grad_zarr[t] = image_grads_out
+
+                logging.info(f"End file save process, exit")
+
             else:
-                model = models.CellposeModel(gpu=gpu, model_type=model_type)
-
-            # Initialize other things
-            logging.info(f"Start cellpose_segmentation task for {zarr_path}")
-            logging.info(f"do_3D: {do_3D}")
-            logging.info(f"use_gpu: {gpu}")
-            logging.info(f"model_type: {model_type}")
-            logging.info(f"pretrained_model: {pretrained_model}")
-            logging.info(f"anisotropy: {anisotropy}")
-
-            # Execute illumination correction
-            image_mask, image_probs, image_grads = segment_FOV(
-                data_zyx, #data_zyx.compute(),
-                model=model,
-                do_3D=do_3D,
-                anisotropy=anisotropy,
-                label_dtype=np.uint32,
-                diameter=cell_diameter / xy_ds_factor,
-                cellprob_threshold=cellprob_threshold,
-                flow_threshold=flow_threshold,
-                min_size=min_size,
-                pretrain_flag=(pretrained_model != None)
-            )
-
-            if xy_ds_factor > 1.0:
-                image_mask_out = resize(image_mask, dims_orig, order=0, anti_aliasing=False, preserve_range=True)
-                image_probs_out = resize(image_probs, dims_orig, order=1)
-                image_grads_out = resize(image_grads, (3,) + dims_orig, order=1)
-            else:
-                image_mask_out = image_mask
-                image_probs_out = image_probs
-                image_grads_out = image_grads
-
-            mask_zarr[t] = image_mask_out
-            prob_zarr[t] = image_probs_out
-            grad_zarr[t] = image_grads_out
-
-            logging.info(f"End file save process, exit")
+                logging.info(f"No image data found. Skipping time point.")
 
 
     return {}

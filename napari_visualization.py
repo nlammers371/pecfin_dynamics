@@ -1,11 +1,7 @@
 from aicsimageio import AICSImage
 import numpy as np
 import napari
-from skimage.transform import resize
-import glob2 as glob
-import os
-# read the image data
-from ome_zarr.io import parse_url
+import zarr
 
 
 # root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/HCR/"
@@ -15,21 +11,15 @@ from ome_zarr.io import parse_url
 #
 # file_list = sorted(glob.glob(os.path.join(root, experiment_date, "") + "*.nd2"))
 # full_filename = "/Volumes/My Passport/pec_fin_dynamics/20240223_wt_tests/B03_test_48hpf001.nd2"
-full_filename = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/20240306_tbx5aSG/tbx5a_sg_G02_20x.nd2"
-# full_filename = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/20240308_tbx5aSG/G01_20x_tbx5a-SG.nd2"
-print(full_filename)
-imObject = AICSImage(full_filename)
-imObject.set_scene(0)
-imData = imObject.get_image_data("ZYX", T=0)
+full_filename = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/cellpose_output/log-v5/20240619/20240619_well0000_probs.zarr"
+# full_filename = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/zarr_image_files/20240619/20240619_well0000.zarr"
+prob_zarr = zarr.open(full_filename, mode="r")
 # imData = np.squeeze(imObject.data)
 
 # Extract pixel sizes and bit_depth
-res_raw = imObject.physical_pixel_sizes
-scale_vec = np.asarray(res_raw)
-print(scale_vec)
+# res_raw = prob_zarr.attrs["voxel_size_um"]
 
-viewer = napari.view_image(imData[:, :, :],  scale=tuple(scale_vec))
-viewer.window.add_plugin_dock_widget(plugin_name='napari-animation')
+viewer = napari.view_image(prob_zarr[10],  scale=tuple([1.5, 0.55, 0.55]))
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     napari.run()
