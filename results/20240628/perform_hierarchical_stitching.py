@@ -11,4 +11,4 @@ for e, experiment_date in enumerate(experiment_date_vec):
 
     model_name = pretrained_model_vec[e]
 
-    stitch_cellpose_labels(root, model_name, experiment_date, overwrite)
+    stitch_cellpose_labels(root=root, model_name=model_name, experiment_date=experiment_date, overwrite=overwrite)
