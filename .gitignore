@@ -7,3 +7,5 @@ visualization/__pychache__/
 .idea/
 __pychache__
 .ipynb_checkpoints
+./src/build/__pychache__/*
+./src/__pychache__/*
