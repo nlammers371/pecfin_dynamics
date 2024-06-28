@@ -194,10 +194,8 @@ def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=
         prob_zarr = zarr.open(prob_name, mode="r")
         grad_zarr = zarr.open(grad_name, mode="r")
 
-        # get number of time points
-        # if has_curation_info:
-        #     time_indices0 = curation_df_long.loc[(curation_df_long.series_number == well_num) & (curation_df_long.qc_flag == 1), "time_index"].to_numpy()
-        # else:
+        scale_vec = prob_zarr.attrs["voxel_size_um"]
+
         time_indices0 = np.arange(prob_zarr.shape[0])
 
         # generate zarr store for stitched masks
@@ -247,7 +245,6 @@ def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=
 if __name__ == "__main__":
     # root = "E:\\Nick\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\pecfin_dynamics\\"
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    scale_vec = np.asarray([2.0, 0.55, 0.55])
     experiment_date = "20240223"
     model_name = "log-v5"
     overwrite = False
