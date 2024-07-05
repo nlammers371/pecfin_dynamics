@@ -176,7 +176,7 @@ def cellpose_segmentation(
 
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
-    if well_list is not None:
+    if well_list is None:
         well_list = range(0, len(image_list))
     for well_index in well_list:
 
