@@ -249,7 +249,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
 
             # perform stitching
             stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec,
-                                                                    prob_thresh_range=prob_thresh_range, seg_res=0.65)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
+                                                                    prob_thresh_range=prob_thresh_range, seg_res=seg_res)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
 
             # save
             multi_mask_zarr[time_int] = mask_stack
