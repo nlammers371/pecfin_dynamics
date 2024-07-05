@@ -121,6 +121,7 @@ def cellpose_segmentation(
     overwrite: Optional[bool] = False,
     xy_ds_factor: Optional[float] = 1.0,
     nuclear_channel: int = 0,
+    well_list = None
 ) -> Dict[str, Any]:
     """
     Run cellpose segmentation on the ROIs of a single OME-NGFF image
@@ -175,8 +176,9 @@ def cellpose_segmentation(
 
     # get list of images
     image_list = sorted(glob.glob(data_directory + "*.zarr"))
-
-    for well_index in range(0, len(image_list)):
+    if well_list is not None:
+        well_list = range(0, len(image_list))
+    for well_index in well_list:
 
         zarr_path = image_list[well_index]
         im_name = path_leaf(zarr_path)
