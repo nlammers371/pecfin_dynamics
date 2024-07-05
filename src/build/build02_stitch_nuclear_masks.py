@@ -45,6 +45,7 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
     grad_array_rs = zoom(grad_array, (1,) + tuple(zoom_factor), order=1) * rs_factor
     prob_array_rs = zoom(prob_array, zoom_factor, order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
 
+    grad_array_rs[0] = grad_array_rs[0]
     # list of prob thresholds to use
     # prob_thresh_range = list(range(min_prob, max_prob + prob_increment, prob_increment))
     seg_hypothesis_array = np.zeros((len(prob_thresh_range),) + prob_array_rs.shape, dtype=np.uint16)
@@ -150,10 +151,15 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
     return masks_out_rs, seg_hypothesis_array_rs
 
 
-def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, prob_thresh_range=None, overwrite=False):
+def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, prob_thresh_range=None, overwrite=False,
+                           seg_res=None):
 
     if prob_thresh_range is None:
         prob_thresh_range = np.arange(-8, 9, 4)
+
+    if seg_res is None:
+        seg_res = 0.65
+
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     # make directory to write stitched labels
@@ -243,14 +249,20 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
 
             # perform stitching
             stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec,
-                                                                prob_thresh_range=prob_thresh_range, seg_res=0.7)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
+                                                                    prob_thresh_range=prob_thresh_range, seg_res=0.65)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
 
             # save
             multi_mask_zarr[time_int] = mask_stack
             aff_mask_zarr[time_int] = stitched_labels
 
-            multi_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
-            aff_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
+            mms = multi_mask_zarr.attrs["prob_levels"]
+            mms[int(time_int)] = list(prob_thresh_range)
+            multi_mask_zarr.attrs["prob_levels"] = mms
+
+            ams = aff_mask_zarr.attrs["prob_levels"]
+            ams[int(time_int)] = list(prob_thresh_range)
+            aff_mask_zarr.attrs["prob_levels"] = ams
+            # aff_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
 
 
 if __name__ == "__main__":
