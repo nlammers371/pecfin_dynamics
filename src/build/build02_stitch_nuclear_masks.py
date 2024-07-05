@@ -14,7 +14,7 @@ import glob2 as glob
 
 
 def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_thresh_range=None,
-                                                    niter=100, min_mask_size=25, max_mask_size=1e5):
+                                                    niter=100, min_mask_size=5, max_mask_size=1e5):
 
     if prob_thresh_range is None:
         raise Exception("No threshold range was provided")
@@ -42,7 +42,6 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
 
     print("Resizing arrays...")
     zoom_factor = np.divide(shape_iso, shape_orig)
-    # cp_array_rs = zoom(cp_mask_array, zoom_factor, order=0)
     grad_array_rs = zoom(grad_array, (1,) + tuple(zoom_factor), order=1) * rs_factor
     prob_array_rs = zoom(prob_array, zoom_factor, order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
 
@@ -151,10 +150,10 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
     return masks_out_rs, seg_hypothesis_array_rs
 
 
-def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=None, overwrite=False):
+def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, prob_thresh_range=None, overwrite=False):
 
     if prob_thresh_range is None:
-        prob_thresh_range = np.arange(-9, 10, 3)
+        prob_thresh_range = np.arange(-8, 9, 4)
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     # make directory to write stitched labels
@@ -174,6 +173,11 @@ def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=
 
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(cellpose_directory + "*_probs.zarr"))
+
+    if well_range is not None:
+        well_range = [w for w in well_range if w < len(well_list)]
+        well_list = [well_list[w] for w in well_range]
+
     for _, well in enumerate(well_list):
 
         # get well index
