@@ -6,22 +6,24 @@ from skimage.transform import resize
 import os
 from ome_zarr.io import parse_url
 
-root = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\raw_data\\HCR\\20240112\\"
-image_name = "A08_20x_good.nd2"
+root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/hcr/peripheral_nerves_bmpi/"
+image_name = "DAPI_GFP_ctrl_fin_series.nd2"
+# image_name = "DAPI_GFP_ctrl_whole_embryo.nd2"
+image_name = "DAPI_GFP_bmpi_fin_series.nd2"
 # image_name = "A05_72hpf_HCR_Ths4b_448__Myod_546__Emilin_650.nd2"
 # image_name = "D3_72hpf_20x_405_DAPI_546_Myod_640_Emilin.nd2"
 full_filename = os.path.join(root, image_name)
 imObject = AICSImage(full_filename)
-# imObject.set_scene("XYPos:6")
+imObject.set_scene("XYPos:0")
 imData = np.squeeze(imObject.get_image_data("CZYX"))
 wvl_vec = imObject.channel_names
 
-wvl_vec_full = ["405", "488", "561", "640"]
-channel_names_full = ["DAPI", "Ths4b", "Myod", "Emilin"]
-colors_full = ["gray", "green", "cyan", "magenta"]
+wvl_vec_full = ["405", "488"]
+channel_names = ["DAPI", "Tubulin"]
+color_names = ["gray", "green"]
 
-channel_names = [channel_names_full[c] for c in range(len(channel_names_full)) if wvl_vec_full[c] in wvl_vec]
-color_names = [colors_full[c] for c in range(len(colors_full)) if wvl_vec_full[c] in wvl_vec]
+# channel_names = [channel_names_full[c] for c in range(len(channel_names_full)) if wvl_vec_full[c] in wvl_vec]
+# color_names = [colors_full[c] for c in range(len(colors_full)) if wvl_vec_full[c] in wvl_vec]
 
 # Extract pixel sizes and bit_depth
 res_raw = imObject.physical_pixel_sizes
