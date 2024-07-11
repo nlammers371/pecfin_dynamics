@@ -14,7 +14,7 @@ import glob2 as glob
 
 
 def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_thresh_range=None,
-                                                    niter=100, min_mask_size=25, max_mask_size=1e5):
+                                                    niter=100, min_mask_size=5, max_mask_size=1e5):
 
     if prob_thresh_range is None:
         raise Exception("No threshold range was provided")
@@ -42,10 +42,10 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
 
     print("Resizing arrays...")
     zoom_factor = np.divide(shape_iso, shape_orig)
-    # cp_array_rs = zoom(cp_mask_array, zoom_factor, order=0)
     grad_array_rs = zoom(grad_array, (1,) + tuple(zoom_factor), order=1) * rs_factor
     prob_array_rs = zoom(prob_array, zoom_factor, order=1)  # resize(prob_array, shape_iso, preserve_range=True, order=1)
 
+    grad_array_rs[0] = grad_array_rs[0]
     # list of prob thresholds to use
     # prob_thresh_range = list(range(min_prob, max_prob + prob_increment, prob_increment))
     seg_hypothesis_array = np.zeros((len(prob_thresh_range),) + prob_array_rs.shape, dtype=np.uint16)
@@ -140,9 +140,6 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
         wt_array = watershed(image=-prob_array_rs, markers=marker_array, mask=mask_array, watershed_line=True)
 
         masks_curr = wt_array
-    # viewer.add_labels(wt_array)
-
-    # masks_out = morphology.remove_small_objects(masks_curr, min_mask_size)
 
     # resize
     masks_out_rs = zoom(masks_curr, zoom_factor**-1, order=0)
@@ -154,11 +151,17 @@ def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_
     return masks_out_rs, seg_hypothesis_array_rs
 
 
-def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=np.arange(-8, 12, 4), overwrite=False):
+def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, prob_thresh_range=None, overwrite=False,
+                           seg_res=None):
+
+    if prob_thresh_range is None:
+        prob_thresh_range = np.arange(-8, 9, 4)
+
+    if seg_res is None:
+        seg_res = 0.65
+
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
-    # get path to raw zarr data
-    # data_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, "")
     # make directory to write stitched labels
     out_directory = os.path.join(root, "built_data", "mask_stacks", model_name, experiment_date, '')
     if not os.path.isdir(out_directory):
@@ -176,19 +179,22 @@ def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=
 
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(cellpose_directory + "*_probs.zarr"))
+
+    if well_range is not None:
+        well_range = [w for w in well_range if w < len(well_list)]
+        well_list = [well_list[w] for w in well_range]
+
     for _, well in enumerate(well_list):
 
         # get well index
-        well_index = well.find("_well")
-        well_num = int(well[well_index + 5:well_index + 9])
+        # well_index = well.find("_well")
+        # well_num = int(well[well_index + 5:well_index + 9])
 
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
         print("Stitching data from " + file_prefix)
-        # data_name = os.path.join(data_directory, file_prefix + ".zarr")
         prob_name = os.path.join(cellpose_directory, file_prefix + "_probs.zarr")
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
-        # mask_name = os.path.join(cellpose_directory, file_prefix + "_labels.zarr")
 
         # data_zarr = zarr.open(data_name, mode="r")
         prob_zarr = zarr.open(prob_name, mode="r")
@@ -223,23 +229,40 @@ def stitch_cellpose_labels(root, model_name, experiment_date, prob_thresh_range=
                     write_indices.append(t)
             write_indices = np.asarray(write_indices)
 
+        # transfer metadata from raw data to cellpose products
+        meta_keys = prob_zarr.attrs.keys()
+        for meta_key in meta_keys:
+            multi_mask_zarr.attrs[meta_key] = prob_zarr.attrs[meta_key]
+            aff_mask_zarr.attrs[meta_key] = prob_zarr.attrs[meta_key]
+
+        multi_mask_zarr.attrs["prob_levels"] = dict({})
+        aff_mask_zarr.attrs["prob_levels"] = dict({})
+
         # iterate through time points
         print("Stitching labels...")
         for time_int in tqdm(write_indices):
 
             # use affinity graph method from omnipose core to stitch masks at different probability levels
             # do the stitching
-            # cp_mask_array = mask_zarr[time_int, :, :, :]
             grad_array = grad_zarr[time_int, :, :, :, :]
             prob_array = prob_zarr[time_int, :, :, :]
-            # viewer = napari.view_image(prob_array, scale=tuple(scale_vec))
+
             # perform stitching
-            stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec, seg_res=0.7) # NL: these were used for 202404 min_prob=-2, max_prob=8,
-            # stitched_labels_thresh = do_threshold_stitching(prob_array, scale_vec, max_prob=16)
+            stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec,
+                                                                    prob_thresh_range=prob_thresh_range, seg_res=seg_res)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
 
             # save
             multi_mask_zarr[time_int] = mask_stack
             aff_mask_zarr[time_int] = stitched_labels
+
+            mms = multi_mask_zarr.attrs["prob_levels"]
+            mms[int(time_int)] = list(prob_thresh_range)
+            multi_mask_zarr.attrs["prob_levels"] = mms
+
+            ams = aff_mask_zarr.attrs["prob_levels"]
+            ams[int(time_int)] = list(prob_thresh_range)
+            aff_mask_zarr.attrs["prob_levels"] = ams
+            # aff_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
 
 
 if __name__ == "__main__":

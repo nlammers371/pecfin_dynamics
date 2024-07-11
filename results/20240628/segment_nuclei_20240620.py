@@ -16,9 +16,10 @@ root= "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/"
 experiment_date_vec = ["20240620"] #["20240223", "20240424", "20240425", "20240619", "20240620"]
 pretrained_model_vec = [pretrained_model0] #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
 nuclear_channel_vec = [0] #[0, 1, 1, 0, 0]
+well_list = range(5, 16)
 for e, experiment_date in enumerate(experiment_date_vec):
     pretrained_model = pretrained_model_vec[e]
     nuclear_channel = nuclear_channel_vec[e]
-    cellpose_segmentation(root=root, experiment_date=experiment_date,
+    cellpose_segmentation(root=root, experiment_date=experiment_date, well_list=well_list,
                           xy_ds_factor=1, cell_diameter=cell_diameter, nuclear_channel=nuclear_channel,
                           cellprob_threshold=cellprob_threshold, pretrained_model=pretrained_model, overwrite=overwrite)

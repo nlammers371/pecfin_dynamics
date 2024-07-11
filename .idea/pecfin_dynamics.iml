@@ -2,11 +2,15 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$" />
+<<<<<<< HEAD
     <orderEntry type="jdk" jdkName="point-gpt-env" jdkType="Python SDK" />
+=======
+    <orderEntry type="jdk" jdkName="ultrack-kf" jdkType="Python SDK" />
+>>>>>>> 7ae03d1a434935ddc0f3bf7914a5423c5bc358ac
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
-    <option name="format" value="NUMPY" />
-    <option name="myDocStringFormat" value="NumPy" />
+    <option name="format" value="PLAIN" />
+    <option name="myDocStringFormat" value="Plain" />
   </component>
 </module>
