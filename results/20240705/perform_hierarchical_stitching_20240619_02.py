@@ -8,7 +8,7 @@ experiment_date_vec = ["20240619"]
 pretrained_model_vec = ["tdTom-bright-log-v5"]  #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
 overwrite = True
 prob_thresh_range = np.arange(-9, 10, 3)
-well_range = np.arange(7, 16)
+well_range = np.arange(14, 16)
 seg_res = 0.65
 
 for e, experiment_date in enumerate(experiment_date_vec):
