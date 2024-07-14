@@ -3,11 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.10" />
   </component>
-<<<<<<< HEAD
-  <component name="ProjectRootManager" version="2" project-jdk-name="point-gpt-env" project-jdk-type="Python SDK" />
-=======
   <component name="ProjectRootManager" version="2" project-jdk-name="$USER_HOME$/miniforge3/envs/morphseq-env" project-jdk-type="Python SDK" />
->>>>>>> 7ae03d1a434935ddc0f3bf7914a5423c5bc358ac
   <component name="PyPackaging">
     <option name="earlyReleasesAsUpgrades" value="true" />
   </component>

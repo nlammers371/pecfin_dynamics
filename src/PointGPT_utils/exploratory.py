@@ -1,8 +1,11 @@
 import sys
 import importlib
-from src.point_cloud.PointGPT.segmentation.models import pt
+from os import path
+sys.path.append('/home/nick/projects')
+# from PointGPT import segmentation
+from src.PointGPT_utils.models import pt
+from src.PointGPT_utils.dataset import FinDataset
 import torch
-from src.point_cloud.PointGPT.segmentation.dataset import PartNormalDataset
 
 model_name = 'PointGPT_S'
 MODEL = pt
@@ -35,9 +38,9 @@ classifier.load_model_from_ckpt(ckpt_path)
 
 
 # try loading pointcloud data
-root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/PointGPT/data/ShapeNet55/"
-TRAIN_DATASET = PartNormalDataset(
-        root=root, npoints=npoint, split='trainval', normal_channel=False)
+root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/point_cloud_data/nucleus_point_clouds/"
+TRAIN_DATASET = FinDataset(
+        root=root, npoints=npoint, split='train')
 
 trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=16, shuffle=True)
 
@@ -51,9 +54,9 @@ points, label, target = points.float().cuda(), label.long().cuda(), target.long(
 
 points = points.transpose(2, 1)
 
-point_features = classifier.forward(points, label)
+# point_features = classifier.forward(points, label)
 # point_features = classifier.extract_features(points)
-# classifier.forward(points, label)
+classifier.forward(points, label)
 # seg_pred = classifier(points, to_categorical(label, num_classes=16))
 #
 # seg_pred = seg_pred.contiguous().view(-1, num_part)
