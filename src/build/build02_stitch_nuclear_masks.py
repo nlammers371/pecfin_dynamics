@@ -200,8 +200,8 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
 
         data_zarr = zarr.open(raw_name, mode="r")
-        prob_zarr = zarr.open(prob_name, mode="r")
-        grad_zarr = zarr.open(grad_name, mode="r")
+        prob_zarr = zarr.open(prob_name, mode="a")
+        grad_zarr = zarr.open(grad_name, mode="a")
 
         time_indices0 = np.arange(prob_zarr.shape[0])
 
