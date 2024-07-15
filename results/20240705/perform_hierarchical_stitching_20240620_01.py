@@ -7,7 +7,7 @@ import numpy as np
 root = "E:/Nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 experiment_date_vec = ["20240620"]
 pretrained_model_vec = ["tdTom-bright-log-v5"]  #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
-overwrite = False
+overwrite = True
 prob_thresh_range = np.arange(-9, 10, 3)
 well_range = np.arange(4, 7)
 seg_res = 0.65

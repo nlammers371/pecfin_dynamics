@@ -8,9 +8,9 @@ root = "Y:\\data\\pecfin_dynamics\\"
 experiment_date_vec = ["20240424"]
 pretrained_model_vec = ["tdTom-dim-log-v3"]  #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
 overwrite = True
-prob_thresh_range = np.arange(-9, 10, 3)
+prob_thresh_range = np.arange(-4, 10, 2)
 well_range = np.arange(0, 8)
-seg_res = 0.65
+seg_res = 0.7
 
 for e, experiment_date in enumerate(experiment_date_vec):
 

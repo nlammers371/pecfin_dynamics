@@ -199,9 +199,12 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
         prob_name = os.path.join(cellpose_directory, file_prefix + "_probs.zarr")
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
 
-        data_zarr = zarr.open(raw_name, mode="r")
         prob_zarr = zarr.open(prob_name, mode="a")
         grad_zarr = zarr.open(grad_name, mode="a")
+        if (experiment_date == "20240425") or (experiment_date == "20240424"):
+            data_zarr = zarr.open(raw_name, mode="r")
+        else:
+            data_zarr = prob_zarr
 
         time_indices0 = np.arange(prob_zarr.shape[0])
 

@@ -11,7 +11,7 @@ import zarr
 #
 # file_list = sorted(glob.glob(os.path.join(root, experiment_date, "") + "*.nd2"))
 # full_filename = "/Volumes/My Passport/pec_fin_dynamics/20240223_wt_tests/B03_test_48hpf001.nd2"
-full_filename = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/cellpose_output/log-v5/20240619/20240619_well0000_probs.zarr"
+full_filename = "Y:\\data\\pecfin_dynamics\\built_data\\cellpose_output\\tdTom-dim-log-v3\\20240425\\20240425_well0001_probs.zarr"
 # full_filename = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/zarr_image_files/20240619/20240619_well0000.zarr"
 prob_zarr = zarr.open(full_filename, mode="r")
 # imData = np.squeeze(imObject.data)
