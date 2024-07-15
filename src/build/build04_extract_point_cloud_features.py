@@ -107,7 +107,7 @@ if __name__ == '__main__':
     train_iter_path = train_iter_list[-1]
     print(train_iter_path)
 
-    experiment_dates = ["20240424", "20240425", "20240223"]
+    experiment_dates = ["20240619"]
 
     for date in experiment_dates:
         extract_point_cloud_features(root, train_iter_path, experiment_date=date, overwrite_flag=True, point_features=[])

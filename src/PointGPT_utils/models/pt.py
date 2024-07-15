@@ -584,12 +584,12 @@ class get_model(nn.Module):
 
         x = torch.cat((f_level_0, x_global_feature), 1)
         x0 = self.relu(self.bns1(self.convs1(x)))
-        x1 = self.dp1(x0)
-        x2 = self.relu(self.bns2(self.convs2(x1)))
-        x3 = self.convs3(x2)
+        # x1 = self.dp1(x0)
+        x1 = self.relu(self.bns2(self.convs2(x0)))
+        x2 = self.convs3(x1)
         # x = F.log_softmax(x, dim=1)
         # x = x.permute(0, 2, 1)
-        return f_level_0, x0, x2, x3
+        return f_level_0, x0, x1, x2
 
 class get_loss(nn.Module):
     def __init__(self):

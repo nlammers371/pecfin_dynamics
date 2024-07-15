@@ -16,31 +16,6 @@ from sklearn.cluster import KMeans
 import math
 
 
-def ellipsoid_axis_lengths(central_moments):
-    """Compute ellipsoid major, intermediate and minor axis length.
-
-    Parameters
-    ----------
-    central_moments : ndarray
-        Array of central moments as given by ``moments_central`` with order 2.
-
-    Returns
-    -------
-    axis_lengths: tuple of float
-        The ellipsoid axis lengths in descending order.
-    """
-    m0 = central_moments[0, 0, 0]
-    sxx = central_moments[2, 0, 0] / m0
-    syy = central_moments[0, 2, 0] / m0
-    szz = central_moments[0, 0, 2] / m0
-    sxy = central_moments[1, 1, 0] / m0
-    sxz = central_moments[1, 0, 1] / m0
-    syz = central_moments[0, 1, 1] / m0
-    S = np.asarray([[sxx, sxy, sxz], [sxy, syy, syz], [sxz, syz, szz]])
-    # determine eigenvalues in descending order
-    eigvals = np.sort(np.linalg.eigvalsh(S))[::-1]
-    eigvals[eigvals < 0] = 0
-    return tuple([math.sqrt(5.0 * e) for e in eigvals])
 
 
 def ellipsoid_axis_loadings(central_moments):

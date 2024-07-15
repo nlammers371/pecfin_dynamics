@@ -4,7 +4,7 @@ from os import path
 sys.path.append('/home/nick/projects')
 # from PointGPT import segmentation
 from src.PointGPT_utils.models import pt
-from src.PointGPT_utils.dataset import FinDataset
+from src.PointGPT_utils.dataset import FinDataset, PartNormalDataset
 import torch
 
 model_name = 'PointGPT_S'

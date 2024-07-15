@@ -4,7 +4,7 @@ notebooks/.ipynb_checkpoints/
 juptyer/.ipynb_checkpoints/
 _Archive/functions/__pychache__/
 visualization/__pychache__/
-.idea/
+.idea/*
 __pychache__
 .ipynb_checkpoints
 ./src/build/__pychache__/*

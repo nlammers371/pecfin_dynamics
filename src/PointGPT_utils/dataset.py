@@ -173,32 +173,20 @@ class PartNormalDataset(Dataset):
 
 # NL: custom point dataset class
 class FinDataset(Dataset):
-    def __init__(self, root, npoints=2500, split='train', split_file=None, train_test_val_split=None, seed=723):
+    def __init__(self, root, cls_label=1, npoints=4096, split='train', split_file=None, train_test_val_split=None, seed=723):
         
         if split_file is None and train_test_val_split is None:
             train_test_val_split = [.8, .1, .1]
             
         self.npoints = npoints
         self.root = root
-        # self.catfile = os.path.join(self.root, 'synsetoffset2category.txt')
-        # self.cat = {}
-        # self.normal_channel = normal_channel
-
-        # with open(self.catfile, 'r') as f:
-        #     for line in f:
-        #         ls = line.strip().split()
-        #         self.cat[ls[0]] = ls[1]
-        # self.cat = {k: v for k, v in self.cat.items()}
-        # self.classes_original = dict(zip(self.cat, range(len(self.cat))))
-
-        # if class_choice is not None:
-        #     self.cat = {k: v for k, v in self.cat.items() if k in class_choice}
-        # print(self.cat)
+        self.cls_label = cls_label
+        self.split = split
 
         # self.meta = {}
         if split_file is None:
             np.random.seed(seed)
-            point_file_list = sorted(glob.glob(os.path.join(root, "point_clouds", '*.csv')))
+            point_file_list = sorted(glob.glob(os.path.join(root, "data", '*.csv')))
             n_files = len(point_file_list)
             n_train = np.floor(n_files * train_test_val_split[0]).astype(int)
             n_test = np.floor(n_files * train_test_val_split[1]).astype(int)
@@ -210,12 +198,6 @@ class FinDataset(Dataset):
 
         else:
             raise Exception("split file option is not yet implemented")
-        # with open(os.path.join(self.root, 'train_test_split', 'shuffled_train_file_list.json'), 'r') as f:
-        #     train_ids = set([str(d.split('/')[2]) for d in json.load(f)])
-        # with open(os.path.join(self.root, 'train_test_split', 'shuffled_val_file_list.json'), 'r') as f:
-        #     val_ids = set([str(d.split('/')[2]) for d in json.load(f)])
-        # with open(os.path.join(self.root, 'train_test_split', 'shuffled_test_file_list.json'), 'r') as f:
-        #     test_ids = set([str(d.split('/')[2]) for d in json.load(f)])
 
         file_strings = [path_leaf(fn) for fn in point_file_list]
         file_strings = [fn.replace("_nuclei", "") for fn in file_strings]
@@ -226,6 +208,8 @@ class FinDataset(Dataset):
             use_ids = self.val_ids
         elif split=="test":
             use_ids = self.test_ids
+        elif split=="all":
+            use_ids = np.asarray(self.test_ids.tolist() + self.train_ids.tolist() + self.val_ids.tolist())
         else:
             raise Exception("Unknown split: %s" % split)
 
@@ -242,13 +226,13 @@ class FinDataset(Dataset):
 
     def __getitem__(self, index):
         if index in self.cache:
-            point_set, cls, seg = self.cache[index]
+            point_set, cls, seg, fn = self.cache[index]
         else:
             fn = self.datapath[index]
             # cat = self.datapath[index][0]
             # cls = self.classes[cat]
             # cls = np.array([cls]).astype(np.int32)
-            cls = np.array(1).astype(np.int32)  # using motorbike because it appears the most complex
+            cls = np.array(self.cls_label).astype(np.int32)  # using motorbike because it appears the most complex
             data = pd.read_csv(fn[1])
 
             # if not self.normal_channel:
@@ -263,12 +247,20 @@ class FinDataset(Dataset):
 
         point_set[:, 0:3] = pc_normalize(point_set[:, 0:3])
 
-        choice = np.random.choice(len(seg), self.npoints, replace=True)
+        if self.split != "all":
+            choice = np.random.choice(len(seg), self.npoints, replace=True)
+        elif self.npoints <= point_set.shape[0]:
+            choice = np.random.choice(len(seg), self.npoints, replace=False)
+        else:
+            choice0 = np.random.choice(len(seg), len(seg), replace=False)
+            choice1 = np.random.choice(len(seg), self.npoints - len(seg), replace=True)
+            choice = np.concatenate((choice0, choice1))
+
         # resample
         point_set = point_set[choice, :]
         seg = seg[choice]
 
-        return point_set, cls, seg
+        return point_set, cls, seg, fn, choice
 
     def __len__(self):
         return len(self.datapath)
