@@ -160,6 +160,8 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
     if seg_res is None:
         seg_res = 0.65
 
+    # get raw data dir
+    raw_directory = os.path.join(root, "built_data", "zarr_image_files", experiment_date, '')
     # get path to cellpose output
     cellpose_directory = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, '')
     # make directory to write stitched labels
@@ -168,14 +170,14 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
         os.makedirs(out_directory)
 
     # load curation data if we have it
-    curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
-    has_curation_info = os.path.isfile(curation_path)
-    if has_curation_info:
-        curation_df = pd.read_csv(curation_path)
-        curation_df_long = pd.melt(curation_df,
-                                   id_vars=["series_number", "notes", "tbx5a_flag", "follow_up_flag"],
-                                   var_name="time_index", value_name="qc_flag")
-        curation_df_long["time_index"] = curation_df_long["time_index"].astype(int)
+    # curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.csv")
+    # has_curation_info = os.path.isfile(curation_path)
+    # if has_curation_info:
+    #     curation_df = pd.read_csv(curation_path)
+    #     curation_df_long = pd.melt(curation_df,
+    #                                id_vars=["series_number", "notes", "tbx5a_flag", "follow_up_flag"],
+    #                                var_name="time_index", value_name="qc_flag")
+    #     curation_df_long["time_index"] = curation_df_long["time_index"].astype(int)
 
     # get list of wells with labels to stitch
     well_list = sorted(glob.glob(cellpose_directory + "*_probs.zarr"))
@@ -193,14 +195,13 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
         #########
         file_prefix = path_leaf(well).replace("_probs.zarr", "")
         print("Stitching data from " + file_prefix)
+        raw_name = os.path.join(raw_directory, file_prefix + ".zarr")
         prob_name = os.path.join(cellpose_directory, file_prefix + "_probs.zarr")
         grad_name = os.path.join(cellpose_directory, file_prefix + "_grads.zarr")
 
-        # data_zarr = zarr.open(data_name, mode="r")
+        data_zarr = zarr.open(raw_name, mode="r")
         prob_zarr = zarr.open(prob_name, mode="r")
         grad_zarr = zarr.open(grad_name, mode="r")
-
-        scale_vec = prob_zarr.attrs["voxel_size_um"]
 
         time_indices0 = np.arange(prob_zarr.shape[0])
 
@@ -217,6 +218,26 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
         aff_mask_zarr = zarr.open(aff_mask_zarr_path, mode='a', shape=prob_zarr.shape,
                                     dtype=np.uint16, chunks=(1,) + prob_zarr.shape[1:])
 
+        # transfer metadata from raw data to cellpose products
+        prob_keys = prob_zarr.attrs.keys()
+        meta_keys = data_zarr.attrs.keys()
+
+        for meta_key in meta_keys:
+            multi_mask_zarr.attrs[meta_key] = data_zarr.attrs[meta_key]
+            aff_mask_zarr.attrs[meta_key] = data_zarr.attrs[meta_key]
+            if "voxel_size_um" not in prob_keys:
+                prob_zarr.attrs[meta_key] = data_zarr.attrs[meta_key]
+                grad_zarr.attrs[meta_key] = data_zarr.attrs[meta_key]
+
+        multi_mask_zarr.attrs["prob_levels"] = dict({})
+        aff_mask_zarr.attrs["prob_levels"] = dict({})
+
+        if "model_path" not in prob_keys:
+            prob_zarr.attrs["model_path"] = model_name
+            grad_zarr.attrs["model_path"] = model_name
+
+        scale_vec = data_zarr.attrs["voxel_size_um"]
+
         # determine which indices to stitch
         print("Determining which time points need stitching...")
         if overwrite | (not prev_flag):
@@ -228,15 +249,6 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
                 if not nz_flag:
                     write_indices.append(t)
             write_indices = np.asarray(write_indices)
-
-        # transfer metadata from raw data to cellpose products
-        meta_keys = prob_zarr.attrs.keys()
-        for meta_key in meta_keys:
-            multi_mask_zarr.attrs[meta_key] = prob_zarr.attrs[meta_key]
-            aff_mask_zarr.attrs[meta_key] = prob_zarr.attrs[meta_key]
-
-        multi_mask_zarr.attrs["prob_levels"] = dict({})
-        aff_mask_zarr.attrs["prob_levels"] = dict({})
 
         # iterate through time points
         print("Stitching labels...")

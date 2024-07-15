@@ -3,7 +3,8 @@ import numpy as np
 
 # set read/write paths
 # root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-root= "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/"
+# root= "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/"
+root = "Y:\\data\\pecfin_dynamics\\"
 experiment_date_vec = ["20240424"]
 pretrained_model_vec = ["tdTom-dim-log-v3"]  #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
 overwrite = True
