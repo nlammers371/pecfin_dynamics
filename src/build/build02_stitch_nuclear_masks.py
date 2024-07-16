@@ -262,22 +262,25 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
             grad_array = grad_zarr[time_int, :, :, :, :]
             prob_array = prob_zarr[time_int, :, :, :]
 
-            # perform stitching
-            stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec,
-                                                                    prob_thresh_range=prob_thresh_range, seg_res=seg_res)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
+            if np.any(prob_array != 0):
+                # perform stitching
+                stitched_labels, mask_stack = do_affinity_stitching(prob_array, grad_array,  scale_vec=scale_vec,
+                                                                        prob_thresh_range=prob_thresh_range, seg_res=seg_res)  # NL: these were used for 202404 min_prob=-2, max_prob=8,
 
-            # save
-            multi_mask_zarr[time_int] = mask_stack
-            aff_mask_zarr[time_int] = stitched_labels
+                # save
+                multi_mask_zarr[time_int] = mask_stack
+                aff_mask_zarr[time_int] = stitched_labels
 
-            mms = multi_mask_zarr.attrs["prob_levels"]
-            mms[int(time_int)] = list(prob_thresh_range)
-            multi_mask_zarr.attrs["prob_levels"] = mms
-
-            ams = aff_mask_zarr.attrs["prob_levels"]
-            ams[int(time_int)] = list(prob_thresh_range)
-            aff_mask_zarr.attrs["prob_levels"] = ams
-            # aff_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
+                mms = multi_mask_zarr.attrs["prob_levels"]
+                mms[int(time_int)] = list(prob_thresh_range)
+                multi_mask_zarr.attrs["prob_levels"] = mms
+    
+                ams = aff_mask_zarr.attrs["prob_levels"]
+                ams[int(time_int)] = list(prob_thresh_range)
+                aff_mask_zarr.attrs["prob_levels"] = ams
+                # aff_mask_zarr.attrs["prob_levels"][time_int] = prob_thresh_range
+            else:
+                print(f"Skipping time point {time_int:04}: no cellpose output found")
 
 
 if __name__ == "__main__":

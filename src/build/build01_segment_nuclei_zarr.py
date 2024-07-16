@@ -185,13 +185,15 @@ def cellpose_segmentation(
         print("processing " + im_name)
         # read the image data
         data_tzyx = zarr.open(zarr_path, mode="r")
+        pixel_res_raw = data_tzyx.attrs["voxel_size_um"]
+        meta_keys = data_tzyx.attrs.keys()
+        meta_dict = data_tzyx.attrs
         if len(data_tzyx.shape) == 5:
             data_tzyx = data_tzyx[nuclear_channel]
         # n_time_points = data_tzyx.shape[0]
 
         # make sure we are not accidentally up-sampling
         assert xy_ds_factor >= 1.0
-        pixel_res_raw = data_tzyx.attrs["voxel_size_um"]
         anisotropy_raw = pixel_res_raw[0] / pixel_res_raw[1]
 
         # generate zarr files
@@ -212,11 +214,10 @@ def cellpose_segmentation(
                               chunks=(1,) + data_tzyx.shape[1:])
 
         # transfer metadata from raw data to cellpose products
-        meta_keys = data_tzyx.attrs.keys()
         for meta_key in meta_keys:
-            prob_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
-            mask_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
-            grad_zarr.attrs[meta_key] = data_tzyx.attrs[meta_key]
+            prob_zarr.attrs[meta_key] = meta_dict[meta_key]
+            mask_zarr.attrs[meta_key] = meta_dict[meta_key]
+            grad_zarr.attrs[meta_key] = meta_dict[meta_key]
 
         prob_zarr.attrs["model_path"] = pretrained_model
         mask_zarr.attrs["model_path"] = pretrained_model
