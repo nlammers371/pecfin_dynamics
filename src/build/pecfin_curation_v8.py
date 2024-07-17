@@ -15,7 +15,7 @@ from sklearn.neighbors import KDTree
 import networkx as nx
 from src.utilities.point_cloud_utils import farthest_point_sample
 
-def sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=100):
+def sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=50):
 
     # select reference points
     ref_points, ref_indices = farthest_point_sample(labels_df.loc[:, ["Z", "Y", "X"]].to_numpy(), npoints)
@@ -38,11 +38,12 @@ def sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=10
 
     if len(mlp_df) > 0:
         mlp_df = pd.concat([mlp_df, mlp_df_temp])
-        mlp_df = mlp_df.drop_duplicates(ignore_index=True)
+        mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
     else:
         mlp_df = mlp_df_temp.copy()
 
     return mlp_df, labels_df, curation_df
+
 def strip_dummy_cols(df):
     cols = df.columns
     keep_cols = [col for col in cols if "Unnamed" not in col]
@@ -102,7 +103,7 @@ def calculate_network_distances(point, G):
 
     return dist_array
 
-def fit_mlp(curation_df, mdl, mlp_df, binary_flag=False):
+def fit_mlp(curation_df, mdl, mlp_df):
     feature_cols = []
 
     feature_cols += [c for c in mlp_df.columns if "feat" in c] #+ ["well_num", "time_int", "date_norm"]
@@ -111,8 +112,8 @@ def fit_mlp(curation_df, mdl, mlp_df, binary_flag=False):
 
     Y_train = mlp_df.loc[:, "fin_label_curr"].to_numpy()
 
-    if binary_flag:
-        Y_train[Y_train != 1] = 2
+    if binary_flag_global:
+        Y_train[Y_train != 1] = 0
 
     print("Updating tissue predictions...")
     mdl = mdl.fit(X_train, Y_train)
@@ -150,17 +151,21 @@ def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
     curation_df["yolk_flags"] = curation_df["fin_label_curr"] == 2
     curation_df["body_flags"] = curation_df["fin_label_curr"] == 3
 
-    curation_df.loc[:, "fin_label_curr"] += 1  # for labeling convenience
+    curation_df.loc[:, "fin_label_curr"] += 1
+    curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
+        # for labeling convenience
 
     # generate wide feature DF for classifier training
     mlp_df_temp = point_df.loc[labels_df["fin_label_curr"] != -1]
     mlp_df_temp.loc[:, "fin_label_curr"] = labels_df.loc[labels_df["fin_label_curr"] != -1, "fin_label_curr"].copy()
+    # if binary_flag_global:
+    #     mlp_df_temp.loc[mlp_df_temp["fin_label_curr"] != 1, "fin_label_curr"] = 0
     mlp_df_temp.loc[:, "well_num"] = well_num
     mlp_df_temp.loc[:, "time_int"] = time_int
 
     if len(mlp_df) > 0:
-        mlp_df = pd.concat([mlp_df, mlp_df_temp])
-        mlp_df = mlp_df.drop_duplicates(ignore_index=True)
+        mlp_df = pd.concat([mlp_df_temp, mlp_df])
+        mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
     else:
         mlp_df = mlp_df_temp.copy()
 
@@ -217,7 +222,10 @@ def load_points_and_labels(root, file_prefix, time_int):
     # check for point cloud dataset
     point_prefix = file_prefix + f"_time{time_int:04}"
     point_path = os.path.join(root, "point_cloud_data", "nucleus_point_features", "")
-    point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+    if not binary_flag_global:
+        point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+    else:
+        point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
     if not os.path.isdir(point_path_out):
         os.makedirs(point_path_out)
 
@@ -282,12 +290,11 @@ def on_points_click(layer, event):
 
             # updated training DF
             mlp_df = point_df.loc[labels_df["fin_label_curr"] != -1]
-            mlp_df.loc[:, "fin_label_curr"] = labels_df.loc[labels_df["fin_label_curr"] != -1, "fin_label_curr"].copy()
-
+            mlp_df.reset_index(inplace=True, drop=True)
+            mlp_df.loc[:, "fin_label_curr"] = labels_df.loc[labels_df["fin_label_curr"] != -1, "fin_label_curr"].to_numpy()
+            # if binary_flag_global:
+            #     mlp_df.loc[mlp_df["fin_label_curr"] != 1, "fin_label_curr"] = 0
             # update training DF
-            # train_orig = mlp_df.copy()
-            # mlp_df = pd.concat([mlp_df_temp, train_orig], axis=0)
-            # mlp_df = mlp_df[~mlp_df.index.duplicated(keep='first')]
 
             if (mlp_df.shape[0] > 10) & (train_counter > 2):
 
@@ -309,16 +316,20 @@ def on_points_click(layer, event):
         return
 
 
-def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_arch=None,
+def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, binary_flag=False, mlp_arch=None,
                         curation_folder=None, use_ref_points=True):
 
     if curation_folder is None:
         curation_folder = experiment_date
 
+    if binary_flag:
+        curation_folder += "_binary"
+
     if mlp_arch is None:
         mlp_arch = (256, 64)
     # initialize global variables
-    global mlp_df, mdl, point_df, labels_df, train_counter, Y_probs
+    global mlp_df, mdl, point_df, labels_df, train_counter, Y_probs, binary_flag_global
+    binary_flag_global = binary_flag
 
     train_counter = 0
 
@@ -338,7 +349,7 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
 
     curation_df, mlp_df_all = get_curation_data(labels_df, mlp_df_all, point_df, well_num, time_int)
     # rescale labels
-    curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
+    # curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
 
     # get frame-specific labeled points
     exp_filter = mlp_df_all["experiment_date"].astype(str) == experiment_date
@@ -350,15 +361,15 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
     if len(mlp_df) > 10:
         curation_df, _, _, Y_probs = fit_mlp(curation_df, mdl, mlp_df)
         if use_ref_points == True:
-            mlp_df, labels_df, curation_df = sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=100)
+            mlp_df, labels_df, curation_df = sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=50)
 
-    elif len(mlp_df_all) > 0:
+    elif len(mlp_df_all) > 10:
         curation_df, _, _, Y_probs = fit_mlp(curation_df, mdl, mlp_df_all)
         if use_ref_points == True:
-            mlp_df, labels_df, curation_df = sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=100)
+            mlp_df, labels_df, curation_df = sample_reference_points(mlp_df, labels_df, point_df, curation_df, npoints=50)
 
     else:
-        curation_df.loc[:, "fin_label_pd"] = curation_df.loc[:, "fin_label_curr"].copy()
+        curation_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([0.25, 0.5, 0.75, 1.0]), curation_df.shape[0])
 
     # define colormaps
     lb_colormap = vispy.color.Colormap(["white", "gray", "green", "red", "blue"], interpolation='zero',
@@ -373,7 +384,7 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
 
 
     point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
-                                    size=2, features=curation_df.loc[:, "fin_label_curr"], face_color="fin_label_curr",
+                                    size=3, features=curation_df.loc[:, "fin_label_curr"], face_color="fin_label_curr",
                                     face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1], out_of_slice_display=True)
 
     ## Add outlier label layer
@@ -403,7 +414,7 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
         yolk_cycle = [label_color_cycle[3]] + [label_color_cycle[0]]
 
     yolk_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='yolk points',
-                                   size=4, features=curation_df.loc[:, "yolk_flags"],
+                                   size=3, features=curation_df.loc[:, "yolk_flags"],
                                    face_color="yolk_flags",
                                    face_color_cycle=yolk_cycle, visible=False, out_of_slice_display=True)
 
@@ -413,15 +424,23 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
     else:
         body_cycle = [label_color_cycle[4]] + [label_color_cycle[0]]
     body_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='body points',
-                                   size=4, features=curation_df.loc[:, "body_flags"],
+                                   size=3, features=curation_df.loc[:, "body_flags"],
                                    face_color="body_flags",
                                    face_color_cycle=body_cycle, visible=False, out_of_slice_display=True)
 
-    pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='prediction',
-                                 size=4, features=curation_df.loc[:, "fin_label_pd"], opacity=0.5,
-                                 face_color="fin_label_pd",
-                                 # face_color_cycle=label_color_cycle, visible=True)
-                                 face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1], out_of_slice_display=True)
+    if True: #not binary_flag:
+        pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='prediction',
+                                     size=3, features=curation_df.loc[:, "fin_label_pd"], opacity=0.5,
+                                     face_color="fin_label_pd",
+                                     # face_color_cycle=label_color_cycle, visible=True)
+                                     face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1], out_of_slice_display=True)
+    # else:
+    #     pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='prediction',
+    #                                  size=4, features=curation_df.loc[:, "fin_label_pd"], opacity=0.5,
+    #                                  face_color="fin_label_pd",
+    #                                  # face_color_cycle=label_color_cycle, visible=True)
+    #                                  face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1],
+    #                                  out_of_slice_display=True)
 
 
     # connect to event trigger function
@@ -440,10 +459,18 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
     labels_df = labels_df.dropna(axis=1, how="all")
 
     wait = input("Press x to approve labels for training. \nOtherwise, press Enter then Enter.")
+    labels_df["binary_flag"] = binary_flag
     if 'x' in wait:
         labels_df["fin_label_final"] = (labels_df["fin_label_pd"]*4 - 1).astype(int)
-        override_filter = (labels_df["fin_label_final"] != labels_df["fin_label_curr"]) & (labels_df["fin_label_curr"] != -1)
-        labels_df.loc[override_filter, "fin_label_final"] = labels_df.loc[override_filter, "fin_label_curr"]
+        if not binary_flag:
+            override_filter = (labels_df["fin_label_final"] != labels_df["fin_label_curr"]) & (labels_df["fin_label_curr"] != -1)
+            labels_df.loc[override_filter, "fin_label_final"] = labels_df.loc[override_filter, "fin_label_curr"]
+        else:
+            manual_labels = labels_df["fin_label_curr"].to_numpy()
+            manual_labels[manual_labels != 1] = 0
+            override_filter = (labels_df["fin_label_final"] != manual_labels) & (
+                        labels_df["fin_label_curr"] != -1)
+            labels_df.loc[override_filter, "fin_label_final"] = manual_labels[override_filter]
     else:
         labels_df["fin_label_final"] = np.nan
 
@@ -452,7 +479,7 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, mlp_
 
     # save MLP and MLP training data
     mlp_df = pd.concat([mlp_df, mlp_df_all], axis=0, ignore_index=True)
-    mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"])
+    mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
 
     # dump(mdl, mdl_path)
     mlp_df = mlp_df.dropna(axis=1, how="all")
@@ -463,11 +490,12 @@ if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
     experiment_date = "20240619"
     overwrite = True
+    binary_flag = True
     seg_model = "tdTom-bright-log-v5"
     # point_model = "point_models_pos"
     well_num = 3
-    curation_folder = os.path.join(experiment_date)
-    time_int = 120
+    curation_folder = experiment_date
+    time_int = 140
     curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, well_num=well_num,
-                    seg_model=seg_model, time_int=time_int, mlp_arch=(256, 64))
+                    seg_model=seg_model, time_int=time_int, mlp_arch=(256, 64), binary_flag=binary_flag)
 
