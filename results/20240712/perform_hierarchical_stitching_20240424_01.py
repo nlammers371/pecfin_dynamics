@@ -10,7 +10,7 @@ pretrained_model_vec = ["tdTom-dim-log-v3"]  #[pretrained_model0, pretrained_mod
 overwrite = True
 prob_thresh_range = np.arange(-4, 10, 2)
 well_range = np.arange(0, 8)
-seg_res = 0.7
+seg_res = 0.65
 
 for e, experiment_date in enumerate(experiment_date_vec):
 
