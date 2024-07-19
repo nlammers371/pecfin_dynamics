@@ -5,7 +5,7 @@ cell_diameter = 10
 cellprob_threshold = 0.0
 
 # set path to CellPose model to use
-pretrained_model0 = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/cellpose_training/standard_models/tdTom-bright-log-v5"
+pretrained_model0 = "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/built_data/cellpose_training/standard_models/tdTom-bright-log-v5"
 # pretrained_model1 = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/cellpose_training/standard_models/tdTom-dim-log-v3"
 # pretrained_model0 = "Y:\\data\\pecfin_dynamics\\built_data\\cellpose_training\\standard_models\\tdTom-bright-log-v5"
 # pretrained_model1 = "Y:\\data\\pecfin_dynamics\\built_data\\cellpose_training\\standard_models\\tdTom-dim-log-v3"
