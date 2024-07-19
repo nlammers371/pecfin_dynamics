@@ -8,6 +8,7 @@ import pandas as pd
 import nd2
 import openpyxl
 import numpy as np
+import dask.array as da
 
 def parse_plate_metadata(root, experiment_date, sheet_names=None):
 
@@ -52,6 +53,9 @@ def parse_nd2_metadata(nd2_path):
 
     imObject = nd2.ND2File(nd2_path)
     im_raw_dask = imObject.to_dask()
+    if len(im_raw_dask.shape) == 4:
+        im_raw_dask = im_raw_dask[None, :, :, :, :]
+
     im_shape = im_raw_dask.shape
     n_z_slices = im_shape[2]
     n_time_points = im_shape[0]
@@ -151,6 +155,9 @@ def extract_frame_metadata(
     imObject = nd2.ND2File(nd2_path)
     im_array_dask = imObject.to_dask()
     nd2_shape = im_array_dask.shape
+    if len(nd2_shape) == 4:
+        im_array_dask = im_array_dask[None, :, :, :, :]
+        nd2_shape = im_array_dask.shape
 
     metadata = dict({})
     metadata["n_time_points"] = nd2_shape[0]
@@ -160,10 +167,11 @@ def extract_frame_metadata(
         n_channels = nd2_shape[3]
         n_x = nd2_shape[5]
         n_y = nd2_shape[4]
-    else:
+    elif len(nd2_shape) == 5:
         n_channels = 1
         n_x = nd2_shape[4]
         n_y = nd2_shape[3]
+
 
     metadata["n_channels"] = n_channels
     metadata["zyx_shape"] = tuple([n_z, n_y, n_x])
