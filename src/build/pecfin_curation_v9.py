@@ -221,7 +221,8 @@ def load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int):
     scale_vec = tuple(scale_vec)
 
     # load the specific time point we want
-    im_prob = prob_zarr[time_int]
+    time_range = np.arange(np.max([0, time_int-3]), np.min([len(prob_zarr), time_int+4]))
+    im_prob = prob_zarr[time_range]
     im_mask = mask_zarr[time_int]
 
     return im_prob, im_mask, scale_vec
@@ -351,13 +352,13 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
     mlp_df_all, mdl, mlp_data_path = load_mlp_data(root, curation_folder, mlp_arch)
 
     # curation_df, mlp_df_all = get_curation_data(labels_df, mlp_df_all, point_df, well_num, time_int, intra_well_only)
-    mlp_df_all = update_mlp_data(labels_df, mlp_df_all, point_df, intra_well_only)
+    mlp_df_refined = update_mlp_data(labels_df, mlp_df_all, point_df, intra_well_only)
 
     # get frame-specific labeled points
-    exp_filter = mlp_df_all["experiment_date"].astype(str) == experiment_date
-    time_filter = mlp_df_all["time_int"] == time_int
-    well_filter = mlp_df_all["well_num"] == well_num
-    mlp_df = mlp_df_all.loc[exp_filter & time_filter & well_filter]
+    exp_filter = mlp_df_refined["experiment_date"].astype(str) == experiment_date
+    time_filter = mlp_df_refined["time_int"] == time_int
+    well_filter = mlp_df_refined["well_num"] == well_num
+    mlp_df = mlp_df_refined.loc[exp_filter & time_filter & well_filter]
 
     # perform initial fit if we have enough local or cross-well training data
     if len(mlp_df) > 10:
@@ -365,8 +366,8 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
 
-    elif len(mlp_df_all) > 10:
-        labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_all)
+    elif len(mlp_df_refined) > 10:
+        labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_refined)
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
 
@@ -425,7 +426,8 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
     labels_df.to_csv((point_path_out + point_prefix + "_labels.csv"), index=False)
 
     # save MLP and MLP training data
-    mlp_df = pd.concat([mlp_df, mlp_df_all], axis=0, ignore_index=True)
+    if len(mlp_df_all) > 0:
+        mlp_df = pd.concat([mlp_df, mlp_df_all], axis=0, ignore_index=True)
     mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
 
     # dump(mdl, mdl_path)
@@ -435,14 +437,14 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240619"
+    experiment_date = "20240620"
     overwrite = True
     binary_flag = False
     seg_model = "tdTom-bright-log-v5"
     # point_model = "point_models_pos"
-    well_num = 3
+    well_num = 5
     curation_folder = experiment_date
-    time_int = 110
+    time_int = 7
     curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, well_num=well_num,
-                    seg_model=seg_model, time_int=time_int, mlp_arch=(256, 128, 64), binary_flag=binary_flag)
+                    seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64), binary_flag=binary_flag, intra_well_only=False)
 

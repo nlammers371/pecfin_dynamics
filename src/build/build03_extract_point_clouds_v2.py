@@ -3,18 +3,11 @@ import numpy as np
 import glob2 as glob
 import pandas as pd
 from tqdm import tqdm
-import torch
-from torch.utils.data import DataLoader
-from src.utilities.data_utilities import PointData
-from src.point_net.point_net import PointNetSegHead
 from skimage.measure import regionprops
 import zarr
 from src.utilities.functions import path_leaf
 from sklearn.neighbors import KDTree
 import scipy
-from sklearn.cluster import KMeans
-import math
-
 
 def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None, overwrite_flag=False):
 
@@ -157,7 +150,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 
-    experiment_date_vec = ["20240619"]  #["20240424", "20240425", "20240223"]
+    experiment_date_vec = ["20240620"]  #["20240424", "20240425", "20240223"]
     seg_model_vec = ["tdTom-bright-log-v5"]  #["log-v3", "log-v3", "log-v5"]
     # build point cloud files
     for e, experiment_date in enumerate(experiment_date_vec):

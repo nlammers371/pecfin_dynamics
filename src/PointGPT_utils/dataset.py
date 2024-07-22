@@ -173,7 +173,8 @@ class PartNormalDataset(Dataset):
 
 # NL: custom point dataset class
 class FinDataset(Dataset):
-    def __init__(self, root, cls_label=1, npoints=4096, split='train', split_file=None, train_test_val_split=None, seed=723):
+    def __init__(self, root, cls_label=1, npoints=4096, split='train', outpath=None, overwrite=False, split_file=None,
+                            train_test_val_split=None, seed=723):
         
         if split_file is None and train_test_val_split is None:
             train_test_val_split = [.8, .1, .1]
@@ -187,7 +188,18 @@ class FinDataset(Dataset):
         if split_file is None:
             np.random.seed(seed)
             point_file_list = sorted(glob.glob(os.path.join(root, "data", '*.csv')))
-            n_files = len(point_file_list)
+            files_to_analyze = point_file_list
+            if (outpath is not None) and overwrite == False:
+                existing_feature_files = glob.glob(os.path.join(outpath, '*.csv'))
+                feature_stubs = [path_leaf(file)[:26] for file in existing_feature_files]
+                point_stubs = [path_leaf(file)[:26] for file in point_file_list]
+                files_to_analyze = [point_file_list[i] for i in range(len(point_file_list)) if point_stubs[i] not in feature_stubs]
+
+            elif outpath is None:
+                print("Outpath provided but overwrite set to True. Did you mean to set overwrite_flag=False?")
+
+
+            n_files = len(files_to_analyze)
             n_train = np.floor(n_files * train_test_val_split[0]).astype(int)
             n_test = np.floor(n_files * train_test_val_split[1]).astype(int)
             # n_val = n_files - n_train - n_test
@@ -199,7 +211,7 @@ class FinDataset(Dataset):
         else:
             raise Exception("split file option is not yet implemented")
 
-        file_strings = [path_leaf(fn) for fn in point_file_list]
+        file_strings = [path_leaf(fn) for fn in files_to_analyze]
         file_strings = [fn.replace("_nuclei", "") for fn in file_strings]
         file_strings = [fn.replace(".csv", "") for fn in file_strings]
         if split=="train":
@@ -215,7 +227,7 @@ class FinDataset(Dataset):
 
         self.datapath = []
         for id in use_ids:
-            self.datapath.append((file_strings[id], point_file_list[id]))
+            self.datapath.append((file_strings[id], files_to_analyze[id]))
 
 
         # for cat in sorted(self.seg_classes.keys()):

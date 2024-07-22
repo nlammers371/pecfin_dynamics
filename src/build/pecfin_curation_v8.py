@@ -495,7 +495,7 @@ if __name__ == '__main__':
     # point_model = "point_models_pos"
     well_num = 3
     curation_folder = experiment_date
-    time_int = 140
+    time_int = 90
     curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, well_num=well_num,
                     seg_model=seg_model, time_int=time_int, mlp_arch=(256, 64), binary_flag=binary_flag)
 
