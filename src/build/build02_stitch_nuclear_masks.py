@@ -274,7 +274,7 @@ def stitch_cellpose_labels(root, model_name, experiment_date, well_range=None, p
                 mms = multi_mask_zarr.attrs["prob_levels"]
                 mms[int(time_int)] = list(prob_thresh_range)
                 multi_mask_zarr.attrs["prob_levels"] = mms
-    
+
                 ams = aff_mask_zarr.attrs["prob_levels"]
                 ams[int(time_int)] = list(prob_thresh_range)
                 aff_mask_zarr.attrs["prob_levels"] = ams

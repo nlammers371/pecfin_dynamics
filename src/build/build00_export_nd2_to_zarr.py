@@ -29,6 +29,10 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
     imObject = nd2.ND2File(nd2_files[0])
     im_array_dask = imObject.to_dask()
     nd2_shape = im_array_dask.shape
+    if len(nd2_shape) == 4:
+        im_array_dask = im_array_dask[None, :, :, :, :]
+        nd2_shape = im_array_dask.shape
+
     n_time_points = metadata["n_time_points"]
     n_wells = metadata["n_wells"]
     n_channels = metadata["n_channels"]
