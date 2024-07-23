@@ -198,7 +198,6 @@ class FinDataset(Dataset):
             elif outpath is None:
                 print("Outpath provided but overwrite set to True. Did you mean to set overwrite_flag=False?")
 
-
             n_files = len(files_to_analyze)
             n_train = np.floor(n_files * train_test_val_split[0]).astype(int)
             n_test = np.floor(n_files * train_test_val_split[1]).astype(int)

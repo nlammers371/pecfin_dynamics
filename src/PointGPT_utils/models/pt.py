@@ -573,7 +573,7 @@ class get_model(nn.Module):
         x_avg = torch.mean(x, 2)
         x_max_feature = x_max.view(B, -1).unsqueeze(-1).repeat(1, 1, N)
         x_avg_feature = x_avg.view(B, -1).unsqueeze(-1).repeat(1, 1, N)
-        cls_label_one_hot = torch.nn.functional.one_hot(cls_label, B).to(torch.float)
+        cls_label_one_hot = torch.nn.functional.one_hot(cls_label, self.label_conv[0].in_channels).to(torch.float)
         cls_label_one_hot = cls_label_one_hot.view(B,cls_label_one_hot.shape[1], 1)  # cls_label.view(B, 16, 1)
         cls_label_feature = self.label_conv(cls_label_one_hot).repeat(1, 1, N)
         x_global_feature = torch.cat(

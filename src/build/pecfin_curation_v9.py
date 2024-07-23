@@ -2,6 +2,7 @@
 import numpy as np
 import napari
 import os
+from src.utilities.functions import path_leaf
 from glob2 import glob
 import skimage.io as skio
 import pandas as pd
@@ -182,6 +183,65 @@ def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
 
     return curation_df, mlp_df
 
+def load_mlp_data_v2(root, mlp_arch, n_points_per_set=400, intra_well_only=False, fin_flag=False, class_split=None):
+
+    point_path = os.path.join(root, "point_cloud_data", "nucleus_point_features", "")
+    if intra_well_only:
+        n_points_per_set = 400
+
+    if not fin_flag:
+        if not binary_flag_global:
+            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+            if class_split is None:
+                class_split = np.asarray([0.32, 0.32, 0.32, 0.04])
+                class_ref_array = np.asarray([1, 2, 3, 4])
+        else:
+            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
+            if class_split is None:
+                class_split = np.asarray([0.5, 0.5])
+                class_ref_array = np.asarray([1, 2])
+    else:
+        labeled_point_path = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
+        if class_split is None:
+            n_points_per_set = 100
+            class_split = np.ones((50,)) / 50
+            class_ref_array = np.arange(0, 50)
+
+    class_split_int = (n_points_per_set * class_split).astype(int)
+    # get list of extant labeled datasets
+    df_list = glob(os.path.join(labeled_point_path, "*.csv"))
+
+    # load each in and sample
+    df_out = []
+    if len(df_list) > 0:
+        for df_path in df_list:
+            # load labels
+            lb_df = pd.read_csv(df_path)
+            # load points
+            point_name = path_leaf(df_path).replace("labels", "points_features")
+            point_df = pd.read_csv(os.path.join(point_path, point_name))
+
+            class_u, label_map = np.unique(lb_df["fin_label_final"], return_inverse=True)
+            train_indices = []
+            for ind, lb in enumerate(class_u):
+                options = np.where(label_map == ind)[0]
+                lb_indices = np.random.choice(options, class_split_int[class_ref_array==lb], replace=True)
+                train_indices.extend(lb_indices)
+
+            lb_df_temp = lb_df.loc[train_indices, ["nucleus_id", "fin_label_final"]]
+            point_df_temp = point_df.iloc[train_indices]
+            point_df_temp = point_df_temp.merge(lb_df_temp, how="left", on="nucleus_id")
+            df_out.append(point_df_temp)
+
+        df_out = pd.concat(df_out, axis=0, ignore_index=True)
+        df_out["fin_label_curr"] = df_out["fin_label_final"]
+        df_out.drop(["fin_label_final"], axis=1, inplace=True)
+
+    # initialize model
+    mdl = MLPClassifier(max_iter=5000, hidden_layer_sizes=mlp_arch)
+
+    return df_out, mdl
+
 def load_mlp_data(root, curation_folder, mlp_arch):
 
     curated_data_dir = os.path.join(root, "metadata", "fin_curation", curation_folder, "")
@@ -228,15 +288,19 @@ def load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int):
     return im_prob, im_mask, scale_vec
 
 
-def load_points_and_labels(root, file_prefix, time_int):
+def load_points_and_labels(root, file_prefix, time_int, fluo_flag=False):
 
     # check for point cloud dataset
     point_prefix = file_prefix + f"_time{time_int:04}"
     point_path = os.path.join(root, "point_cloud_data", "nucleus_point_features", "")
-    if not binary_flag_global:
-        point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+    if not fluo_flag:
+        if not binary_flag_global:
+            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+        else:
+            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
     else:
-        point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
+        point_path_out = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
+
     if not os.path.isdir(point_path_out):
         os.makedirs(point_path_out)
 
@@ -256,10 +320,14 @@ def load_points_and_labels(root, file_prefix, time_int):
         labels_df["fin_curation_date"] = np.nan
         labels_df["fin_label_curr"] = 0
 
-    labels_df.loc[labels_df["fin_label_curr"] == -1, "fin_label_curr"] = 0
+    if not fluo_flag:
+        labels_df.loc[labels_df["fin_label_curr"] == -1, "fin_label_curr"] = 0
+    else:
+        labels_df["fin_label_curr"] = labels_df["tbx5a-StayGold_fluo_label"]
     labels_df["fin_label_pd"] = labels_df["fin_label_curr"]
 
     return point_df, labels_df, point_prefix, point_path_out
+
 def label_update_function(event):
     global mlp_df, mdl, train_counter
 
@@ -322,14 +390,8 @@ def label_update_function(event):
         lb_data[mask_zarr == 0] = 0
         lb_layer.data = lb_data
 
-def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, binary_flag=False, mlp_arch=None,
-                        curation_folder=None, use_ref_points=True, intra_well_only=True):
-
-    if curation_folder is None:
-        curation_folder = experiment_date
-
-    if binary_flag:
-        curation_folder += "_binary"
+def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, fluo_flag=False, binary_flag=False, mlp_arch=None,
+                         use_ref_points=True, intra_well_only=True):
 
     if mlp_arch is None:
         mlp_arch = (256, 64)
@@ -346,10 +408,11 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
     prob_zarr, mask_zarr, scale_vec = load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int)
 
     # load point features and labels
-    point_df, labels_df, point_prefix, point_path_out = load_points_and_labels(root, file_prefix, time_int)
+    point_df, labels_df, point_prefix, point_path_out = load_points_and_labels(root, file_prefix, time_int, fluo_flag)
 
     # check for previously-trained models and curation data
-    mlp_df_all, mdl, mlp_data_path = load_mlp_data(root, curation_folder, mlp_arch)
+    mlp_df_all, mdl = load_mlp_data_v2(root=root, mlp_arch=mlp_arch, intra_well_only=intra_well_only)
+    # mlp_df_all, mdl, mlp_data_path = load_mlp_data(root, curation_folder, mlp_arch)
 
     # curation_df, mlp_df_all = get_curation_data(labels_df, mlp_df_all, point_df, well_num, time_int, intra_well_only)
     mlp_df_refined = update_mlp_data(labels_df, mlp_df_all, point_df, intra_well_only)
@@ -361,18 +424,21 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
     mlp_df = mlp_df_refined.loc[exp_filter & time_filter & well_filter]
 
     # perform initial fit if we have enough local or cross-well training data
-    if len(mlp_df) > 10:
-        labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df)
+    if (len(mlp_df_all) > 10) and (not fluo_flag):
+        labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_all)
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
 
-    elif len(mlp_df_refined) > 10:
+    elif (len(mlp_df_refined) > 10) and (not fluo_flag):
         labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_refined)
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
 
     else:
-        labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([1, 2, 3, 4]), labels_df.shape[0])
+        if not fluo_flag:
+            labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([1, 2, 3, 4]), labels_df.shape[0])
+        else:
+            labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.arange(0, 50), labels_df.shape[0])
 
     # initialize viewer
     viewer = napari.Viewer()
@@ -381,7 +447,10 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
 
 
     # map from points set to label masks
-    labels_u = [1, 2, 3, 4]
+    if not fluo_flag:
+        labels_u = [1, 2, 3, 4]
+    else:
+        labels_u = np.arange(0, 50)
     pd_mask = np.zeros_like(mask_zarr)
     lb_mask = np.zeros_like(mask_zarr)
     for lb in labels_u:
@@ -390,8 +459,14 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
         lb_ids = labels_df.loc[labels_df["fin_label_curr"] == lb, "nucleus_id"].values
         lb_mask[np.isin(mask_zarr, lb_ids)] = lb
 
+
     lb_layer = viewer.add_labels(lb_mask, scale=scale_vec, name='labels', opacity=1.0, visible=True)
     pd_layer = viewer.add_labels(pd_mask, scale=scale_vec, name='prediction', opacity=0.25, visible=True)
+
+    if fluo_flag:
+        lb_im_layer = viewer.add_image(lb_mask, scale=scale_vec, colormap="green", name='labels (ordered)', opacity=1.0,
+                                    visible=True)
+
 
     lb_layer.events.set_data.connect(label_update_function)
     lb_layer.events.paint.connect(label_update_function)
@@ -422,29 +497,30 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, bina
     else:
         labels_df["fin_label_final"] = np.nan
 
-    # save condensed version without the features
-    labels_df.to_csv((point_path_out + point_prefix + "_labels.csv"), index=False)
+    if not fluo_flag:
+        # save condensed version without the features
+        labels_df.to_csv((point_path_out + point_prefix + "_labels.csv"), index=False)
 
-    # save MLP and MLP training data
-    if len(mlp_df_all) > 0:
-        mlp_df = pd.concat([mlp_df, mlp_df_all], axis=0, ignore_index=True)
-    mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
-
-    # dump(mdl, mdl_path)
-    mlp_df = mlp_df.dropna(axis=1, how="all")
-    mlp_df.to_csv(mlp_data_path, index=False)
+    # # save MLP and MLP training data
+    # if len(mlp_df_all) > 0:
+    #     mlp_df = pd.concat([mlp_df, mlp_df_all], axis=0, ignore_index=True)
+    # mlp_df = mlp_df.drop_duplicates(keep="first", subset=["experiment_date", "well_num", "time_int", "nucleus_id"], ignore_index=True)
+    #
+    # # dump(mdl, mdl_path)
+    # mlp_df = mlp_df.dropna(axis=1, how="all")
+    # mlp_df.to_csv(mlp_data_path, index=False)
 
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240620"
+    experiment_date = "20240425"
     overwrite = True
-    binary_flag = False
-    seg_model = "tdTom-bright-log-v5"
+    fluo_flag = True
+    seg_model = "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 5
-    curation_folder = experiment_date
-    time_int = 7
-    curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, well_num=well_num,
-                    seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64), binary_flag=binary_flag, intra_well_only=False)
+    well_num = 1
+    time_int = 2
+    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num,
+                    seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64),
+                    fluo_flag=fluo_flag, intra_well_only=True)
 
