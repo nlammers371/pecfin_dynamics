@@ -73,7 +73,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
 
             if (not os.path.isfile(point_path)) | overwrite_flag:
                 # add layer of mask centroids
-                # NL: note that this techincally should factor in pixel dims, but I've found that z distortion
+                # NL: note that this technically should factor in pixel dims, but I've found that z distortion
                 #     compromises shape measures
                 regions = regionprops(mask_zarr[t])#, spacing=tuple(scale_vec))
 
@@ -139,24 +139,24 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
                     # normalize
                     for ch in fluo_names:
                         # int_max = np.max(nucleus_df[ch + "_nn"])
-                        mean_max = np.max(fluo_df[ch + "_mean_nn"])
+                        # mean_max = np.max(fluo_df[ch + "_mean_nn"])
                         # nucleus_df[ch + "_nn_norm"] = nucleus_df.loc[:, ch + "_nn"] / int_max
-                        fluo_df[ch + "_mean_nn_norm"] = fluo_df.loc[:, ch + "_mean_nn"] / mean_max
-                        disc0 = KBinsDiscretizer(n_bins=50, encode="ordinal", strategy="quantile")
-                        f_vec = fluo_df[ch + "_mean_nn_norm"].to_numpy()[:, np.newaxis]
-                        disc0.fit(f_vec)
-                        bin_vec0 = disc0.transform(f_vec)
-                        fluo_df[ch + "_fluo_label"] = bin_vec0
+                        # fluo_df[ch + "_mean_nn_norm"] = fluo_df.loc[:, ch + "_mean_nn"] / mean_max
+                        # disc0 = KBinsDiscretizer(n_bins=46, encode="ordinal", strategy="quantile")
+                        # f_vec = fluo_df[ch + "_mean_nn_norm"].to_numpy()[:, np.newaxis]
+                        # disc0.fit(f_vec)
+                        # bin_vec0 = disc0.transform(f_vec)
+                        # fluo_df[ch + "_fluo_label"] = bin_vec0
                         # calculate distance to max fluo value
                         arg_max = np.argmax(fluo_df[ch + "_mean_nn"])
                         max_zyx = fluo_df.loc[arg_max, ["Z", "Y", "X"]].to_numpy().astype(np.float64)
 
                         fluo_df[ch + "_dist"] = np.sqrt(np.sum((fluo_df.loc[:, ["Z", "Y", "X"]].to_numpy() - max_zyx)**2, axis=1))
-                        dist_norm = fluo_df[ch + "_dist"].to_numpy() / np.max(fluo_df[ch + "_dist"])
-                        disc1 = KBinsDiscretizer(n_bins=50, encode="ordinal", strategy="quantile")
-                        disc1.fit(dist_norm[:, np.newaxis])
-                        bin_vec1 = disc1.transform(dist_norm[:, np.newaxis])
-                        fluo_df[ch + "_dist_label"] = bin_vec1
+                        # dist_norm = fluo_df[ch + "_dist"].to_numpy() / np.max(fluo_df[ch + "_dist"])
+                        # disc1 = KBinsDiscretizer(n_bins=50, encode="ordinal", strategy="quantile")
+                        # disc1.fit(dist_norm[:, np.newaxis])
+                        # bin_vec1 = disc1.transform(dist_norm[:, np.newaxis])
+                        # fluo_df[ch + "_dist_label"] = bin_vec1
 
                 # use k-means clustering to obtain standardized
                 # n_clusters_emb = np.min([nucleus_df.shape[0], n_clusters])
@@ -181,6 +181,99 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
                 # save labeled dataset if we have fluo data
                 if tbx5a_flag:
                     fluo_df.to_csv(fluo_path, index=False)
+
+
+def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="kmeans"):
+    day2_offset = 75  # temporary fudge factor until I get reliable stage estimates
+
+    df_list = sorted(glob.glob(fluo_df_path + "*.csv"))
+    fluo_df_list = []
+    for d, df_path in enumerate(tqdm(df_list, "Loading point datasets...")):
+        df = pd.read_csv(df_path)
+        if df.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
+            df["time_int"] += day2_offset
+        df["frame_id"] = d
+        fluo_df_list.append(df)
+
+    # generate master DF
+    fluo_df_master = pd.concat(fluo_df_list, axis=0, ignore_index=True)
+
+    # get max fluo for each stage/time point
+    time_index = np.unique(fluo_df_master["time_int"])
+    time_window = 2
+    time_vec = fluo_df_master["time_int"].values
+    fluo_vec = fluo_df_master[fluo_var].values
+
+    f_99_vec = []
+    for t in time_index:
+        t_filter = (time_vec >= t - time_window) & (time_vec <= t + time_window)
+        f_99_vec.append(np.percentile(fluo_vec[t_filter], 99.9))
+
+    # generate new normalized variable
+    for t in tqdm(time_index):
+        f_factor = np.asarray(f_99_vec)[time_index == t]
+        fluo_df_master.loc[time_vec == t, fluo_var + "_norm"] = fluo_df_master.loc[time_vec == t, fluo_var] / f_factor
+    fluo_df_master.loc[fluo_df_master[fluo_var + "_norm"] > 1, fluo_var + "_norm"] = 1
+
+    # assign to bins according to fluorescence
+    fluo_norm_vec = fluo_df_master[fluo_var + "_norm"].to_numpy()[:, np.newaxis]
+    est = KBinsDiscretizer(
+        n_bins=nbins, encode='ordinal', strategy=bin_method
+    )
+    est.fit(fluo_norm_vec)
+
+    # add to dataset
+    fluo_df_master["fluo_label"] = est.transform(fluo_norm_vec)
+    fluo_df_master["fluo_val_norm"] = fluo_norm_vec
+
+    rm_cols = ['tbx5a-StayGold_fluo_label', 'tbx5a-StayGold_mean_nn_norm', 'fin_curation_flag']
+    fluo_df_master.drop(rm_cols, axis=1, inplace=True)
+
+    for d, df_path in enumerate(tqdm(df_list, "Loading point datasets...")):
+        df_updated = fluo_df_master.loc[fluo_df_master["frame_id"]==d, :].drop(["frame_id"], axis=1).reset_index(drop=True)
+
+        if df_updated.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
+            df_updated["time_int"] -= day2_offset
+
+        df_updated.to_csv(df_path, index=False)
+
+def make_segmentation_training_folder(root):
+
+    # make output directory
+    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training", "data", "")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # load tissue part labels
+    tissue_dir = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+    tissue_df_list = sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
+    for df_path in tqdm(tissue_df_list, desc="Writing tissue datasets..."):
+        df = pd.read_csv(df_path)
+        keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fin_label_final"]
+        df = df.loc[:, keep_cols]
+        df.rename(columns={"fin_label_final": "label"}, inplace=True)
+        df["label"] = df["label"] - 1
+        df["class"] = ["tissue"]*df.shape[0]
+        df["class_id"] = [0] * df.shape[0]
+        # save
+        df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
+        df.to_csv(os.path.join(out_dir, df_name), index=False)
+
+    fluo_dir = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
+    fluo_df_list = sorted(glob.glob(os.path.join(fluo_dir, "*.csv")))
+    for df_path in tqdm(fluo_df_list, desc="Writing tbx5a datasets..."):
+        df = pd.read_csv(df_path)
+        keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
+        df = df.loc[:, keep_cols]
+        df.rename(columns={"fluo_label": "label"}, inplace=True)
+        df["label"] = df["label"] + 4
+        df["class"] = ["tbx5a"] * df.shape[0]
+        df["class_id"] = [1] * df.shape[0]
+        # save
+        df_name = path_leaf(df_path).replace("_labels", "_fluo_labels")
+        df.to_csv(os.path.join(out_dir, df_name), index=False)
+
+
 
 
 

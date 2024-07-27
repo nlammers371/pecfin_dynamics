@@ -587,9 +587,9 @@ class get_model(nn.Module):
         # x1 = self.dp1(x0)
         x1 = self.relu(self.bns2(self.convs2(x0)))
         x2 = self.convs3(x1)
-        # x = F.log_softmax(x, dim=1)
-        # x = x.permute(0, 2, 1)
-        return f_level_0, x0, x1, x2
+        pd = F.log_softmax(x2, dim=1)
+        pd = pd.permute(0, 2, 1)
+        return f_level_0, x0, x1, x2, pd
 
 class get_loss(nn.Module):
     def __init__(self):

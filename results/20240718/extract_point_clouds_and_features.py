@@ -10,4 +10,5 @@ seg_model_vec = ["tdTom-bright-log-v5"]  #["log-v3", "log-v3", "log-v5"]
 #     extract_nucleus_stats(root, experiment_date, seg_model_vec[e], overwrite_flag=True)
 
 # call feature extraction script
-extract_point_cloud_features(root, overwrite_flag=True)
+# extract_point_cloud_features(root, overwrite_flag=True)
+
