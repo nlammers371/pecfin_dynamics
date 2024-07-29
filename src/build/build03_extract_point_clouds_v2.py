@@ -227,7 +227,9 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
     fluo_df_master["fluo_val_norm"] = fluo_norm_vec
 
     rm_cols = ['tbx5a-StayGold_fluo_label', 'tbx5a-StayGold_mean_nn_norm', 'fin_curation_flag']
-    fluo_df_master.drop(rm_cols, axis=1, inplace=True)
+    rm_cols = [col for col in rm_cols if col in fluo_df_master.columns]
+    if len(rm_cols) > 0:
+        fluo_df_master.drop(rm_cols, axis=1, inplace=True)
 
     for d, df_path in enumerate(tqdm(df_list, "Loading point datasets...")):
         df_updated = fluo_df_master.loc[fluo_df_master["frame_id"]==d, :].drop(["frame_id"], axis=1).reset_index(drop=True)
@@ -240,38 +242,42 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
 def make_segmentation_training_folder(root):
 
     # make output directory
-    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training", "data", "")
+    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training_v2", "data", "")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
     # load tissue part labels
-    tissue_dir = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
-    tissue_df_list = sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
-    for df_path in tqdm(tissue_df_list, desc="Writing tissue datasets..."):
-        df = pd.read_csv(df_path)
-        keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fin_label_final"]
-        df = df.loc[:, keep_cols]
-        df.rename(columns={"fin_label_final": "label"}, inplace=True)
-        df["label"] = df["label"] - 1
-        df["class"] = ["tissue"]*df.shape[0]
-        df["class_id"] = [0] * df.shape[0]
-        # save
-        df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
-        df.to_csv(os.path.join(out_dir, df_name), index=False)
+    tissue_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "fin_segmentation" + "*"))
+    tissue_dir_list = [tdir for tdir in tissue_dir_list if os.path.isdir(tdir)]
+    for t, tissue_dir in enumerate(tissue_dir_list):
+        tissue_df_list = sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
+        for df_path in tqdm(tissue_df_list, desc="Writing tissue datasets..."):
+            df = pd.read_csv(df_path)
+            keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fin_label_final"]
+            df = df.loc[:, keep_cols]
+            df.rename(columns={"fin_label_final": "label"}, inplace=True)
+            df["label"] = df["label"] - 1
+            df["class"] = ["tissue"]*df.shape[0]
+            df["class_id"] = [0] * df.shape[0]
+            # save
+            df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
+            df.to_csv(os.path.join(out_dir, df_name), index=False)
 
-    fluo_dir = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
-    fluo_df_list = sorted(glob.glob(os.path.join(fluo_dir, "*.csv")))
-    for df_path in tqdm(fluo_df_list, desc="Writing tbx5a datasets..."):
-        df = pd.read_csv(df_path)
-        keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
-        df = df.loc[:, keep_cols]
-        df.rename(columns={"fluo_label": "label"}, inplace=True)
-        df["label"] = df["label"] + 4
-        df["class"] = ["tbx5a"] * df.shape[0]
-        df["class_id"] = [1] * df.shape[0]
-        # save
-        df_name = path_leaf(df_path).replace("_labels", "_fluo_labels")
-        df.to_csv(os.path.join(out_dir, df_name), index=False)
+    fluo_dir_list = os.path.join(root, "point_cloud_data", "tbx5a_segmentation" + "*")
+    fluo_dir_list = [fdir for fdir in fluo_dir_list if os.path.isdir(fdir)]
+    for f, fluo_dir in enumerate(fluo_dir_list):
+        fluo_df_list = sorted(glob.glob(os.path.join(fluo_dir, "*.csv")))
+        for df_path in tqdm(fluo_df_list, desc="Writing tbx5a datasets..."):
+            df = pd.read_csv(df_path)
+            keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
+            df = df.loc[:, keep_cols]
+            df.rename(columns={"fluo_label": "label"}, inplace=True)
+            df["label"] = df["label"] + 4
+            df["class"] = ["tbx5a"] * df.shape[0]
+            df["class_id"] = [1] * df.shape[0]
+            # save
+            df_name = path_leaf(df_path).replace("_labels", "_fluo_labels")
+            df.to_csv(os.path.join(out_dir, df_name), index=False)
 
 
 

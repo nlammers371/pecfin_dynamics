@@ -24,7 +24,10 @@ def sample_reference_points(mlp_df, labels_df, point_df, npoints=50):
     for l, lb in enumerate(labels_u):
         lbi = np.where(labels_u==lb)[0]
         lb_indices = np.where(labels_to==lbi)[0]
-        ns = np.min([labels_per, len(lb_indices)])
+        if lb != 4:
+            ns = np.min([labels_per, len(lb_indices)])
+        else:
+            ns = np.min([5, len(lb_indices)])
         if ns > 0:
             # _, temp_indices = farthest_point_sample(labels_df.loc[lb_indices, ["Z", "Y", "X"]].to_numpy(), ns)
             temp_indices = np.random.choice(lb_indices, size=ns, replace=False)
@@ -233,17 +236,19 @@ def load_mlp_data_v2(root, mlp_arch, n_points_per_set=400, intra_well_only=False
             point_name = path_leaf(df_path).replace("labels", "points_features")
             point_df = pd.read_csv(os.path.join(point_path, point_name))
 
-            class_u, label_map = np.unique(lb_df["fin_label_final"], return_inverse=True)
-            train_indices = []
-            for ind, lb in enumerate(class_u):
-                options = np.where(label_map == ind)[0]
-                lb_indices = np.random.choice(options, class_split_int[class_ref_array==lb], replace=True)
-                train_indices.extend(lb_indices)
+            if np.all(~np.isnan(lb_df["fin_label_final"].to_numpy())):
+                class_u, label_map = np.unique(lb_df["fin_label_final"], return_inverse=True)
 
-            lb_df_temp = lb_df.loc[train_indices, ["nucleus_id", "fin_label_final"]]
-            point_df_temp = point_df.iloc[train_indices]
-            point_df_temp = point_df_temp.merge(lb_df_temp, how="left", on="nucleus_id")
-            df_out.append(point_df_temp)
+                train_indices = []
+                for ind, lb in enumerate(class_u):
+                    options = np.where(label_map == ind)[0]
+                    lb_indices = np.random.choice(options, class_split_int[class_ref_array==lb], replace=True)
+                    train_indices.extend(lb_indices)
+
+                lb_df_temp = lb_df.loc[train_indices, ["nucleus_id", "fin_label_final"]]
+                point_df_temp = point_df.iloc[train_indices]
+                point_df_temp = point_df_temp.merge(lb_df_temp, how="left", on="nucleus_id")
+                df_out.append(point_df_temp)
 
         df_out = pd.concat(df_out, axis=0, ignore_index=True)
         df_out["fin_label_curr"] = df_out["fin_label_final"]
@@ -442,14 +447,14 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=50)
 
-    elif  (len(mlp_df_refined) > 10) and (not fluo_flag):
+    elif False:  #(len(mlp_df_refined) > 10) and (not fluo_flag):
         labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_refined)
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
 
-    elif "label_pd" in point_df.columns:
+    elif False: #"label_pd" in point_df.columns:
         labels_df.loc[:, "fin_label_pd"] = point_df.loc[:, "label_pd"] + 1
-        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
+        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=100)
     else:
         if not fluo_flag:
             labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([1, 2, 3, 4]), labels_df.shape[0])
@@ -529,13 +534,13 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240620"
+    experiment_date = "20240712_02"
     overwrite = True
     fluo_flag = False
-    seg_model = "tdTom-bright-log-v5" #"tdTom-dim-log-v3"
+    seg_model = "tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 8
-    time_int = 76
+    well_num = 75
+    time_int = 0
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="seg01_best_model_tissue",
                     seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64),
                     fluo_flag=fluo_flag, intra_well_only=True)
