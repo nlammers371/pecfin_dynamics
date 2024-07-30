@@ -452,9 +452,9 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
 
-    elif False: #"label_pd" in point_df.columns:
+    elif "label_pd" in point_df.columns:
         labels_df.loc[:, "fin_label_pd"] = point_df.loc[:, "label_pd"] + 1
-        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=100)
+        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
     else:
         if not fluo_flag:
             labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([1, 2, 3, 4]), labels_df.shape[0])
@@ -534,14 +534,14 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240712_02"
+    experiment_date = "20240424" #"20240712_02"
     overwrite = True
     fluo_flag = False
-    seg_model = "tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
+    seg_model = "tdTom-dim-log-v3" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 75
-    time_int = 0
-    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="seg01_best_model_tissue",
+    well_num = 4
+    time_int = 1
+    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="seg03_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64),
                     fluo_flag=fluo_flag, intra_well_only=True)
 

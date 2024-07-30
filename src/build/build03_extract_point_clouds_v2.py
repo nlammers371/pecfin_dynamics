@@ -95,7 +95,7 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
                 nucleus_df["size"] = np.asarray([rg.area for rg in regions])
 
                 # remove very small masks
-                size_filter = nucleus_df["size"].to_numpy() >= 15
+                size_filter = nucleus_df["size"].to_numpy() >= 50
                 nucleus_df = nucleus_df.loc[size_filter, :]
                 nucleus_df.reset_index(inplace=True, drop=True)
                 # regions = [regions[i] for i in range(len(regions)) if size_filter[i]]
@@ -135,6 +135,8 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
                         fluo_array = fluo_df.loc[:, ch + "_mean"].to_numpy()
                         fluo_array_nn = fluo_array[nearest_ind]
                         fluo_df[ch + "_mean_nn"] = np.nanmean(fluo_array_nn, axis=1)
+                        if np.any(np.isnan(fluo_df[ch + "_mean_nn"])):
+                            print("wtf")
 
                     # normalize
                     for ch in fluo_names:
@@ -180,6 +182,10 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
 
                 # save labeled dataset if we have fluo data
                 if tbx5a_flag:
+                    if "tbx5a-StayGold_mean_nn" not in fluo_df.columns:
+                        print("why?")
+                    if np.any(np.isnan(fluo_df["tbx5a-StayGold_mean_nn"])):
+                        print("wtf")
                     fluo_df.to_csv(fluo_path, index=False)
 
 
@@ -187,13 +193,20 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
     day2_offset = 75  # temporary fudge factor until I get reliable stage estimates
 
     df_list = sorted(glob.glob(fluo_df_path + "*.csv"))
+    out_path = fluo_df_path[:-1] + "_lb"
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
     fluo_df_list = []
     for d, df_path in enumerate(tqdm(df_list, "Loading point datasets...")):
-        df = pd.read_csv(df_path)
-        if df.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
-            df["time_int"] += day2_offset
-        df["frame_id"] = d
-        fluo_df_list.append(df)
+        try:
+            df = pd.read_csv(df_path)
+            if df.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
+                df["time_int"] += day2_offset
+            df["frame_id"] = d
+
+            fluo_df_list.append(df)
+        except:
+            pass
 
     # generate master DF
     fluo_df_master = pd.concat(fluo_df_list, axis=0, ignore_index=True)
@@ -217,6 +230,8 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
 
     # assign to bins according to fluorescence
     fluo_norm_vec = fluo_df_master[fluo_var + "_norm"].to_numpy()[:, np.newaxis]
+    if np.any(np.isnan(fluo_norm_vec)):
+        print("why")
     est = KBinsDiscretizer(
         n_bins=nbins, encode='ordinal', strategy=bin_method
     )
@@ -231,24 +246,27 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
     if len(rm_cols) > 0:
         fluo_df_master.drop(rm_cols, axis=1, inplace=True)
 
-    for d, df_path in enumerate(tqdm(df_list, "Loading point datasets...")):
-        df_updated = fluo_df_master.loc[fluo_df_master["frame_id"]==d, :].drop(["frame_id"], axis=1).reset_index(drop=True)
+    for d, df_path in enumerate(tqdm(df_list, "Saving point datasets...")):
+        df_updated = fluo_df_master.loc[fluo_df_master["frame_id"] == d, :].drop(["frame_id"], axis=1).reset_index(drop=True)
+        if df_updated.shape[0] > 10:
+            if df_updated.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
+                df_updated["time_int"] -= day2_offset
 
-        if df_updated.loc[0, "experiment_date"].astype(str) == "20240425":  # temporary adjustment factor
-            df_updated["time_int"] -= day2_offset
-
-        df_updated.to_csv(df_path, index=False)
+            df_name = path_leaf(df_path)
+            out_name = os.path.join(out_path, df_name)
+            df_updated.to_csv(out_name, index=False)
 
 def make_segmentation_training_folder(root):
 
     # make output directory
-    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training_v2", "data", "")
+    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training_v3", "data", "")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
     # load tissue part labels
     tissue_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "fin_segmentation" + "*"))
     tissue_dir_list = [tdir for tdir in tissue_dir_list if os.path.isdir(tdir)]
+    n_tissue = 0
     for t, tissue_dir in enumerate(tissue_dir_list):
         tissue_df_list = sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
         for df_path in tqdm(tissue_df_list, desc="Writing tissue datasets..."):
@@ -257,27 +275,44 @@ def make_segmentation_training_folder(root):
             df = df.loc[:, keep_cols]
             df.rename(columns={"fin_label_final": "label"}, inplace=True)
             df["label"] = df["label"] - 1
+            # df = df.loc[df["label"] < 3, :]  # remove outlier class
+
             df["class"] = ["tissue"]*df.shape[0]
             df["class_id"] = [0] * df.shape[0]
             # save
             df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
             df.to_csv(os.path.join(out_dir, df_name), index=False)
 
-    fluo_dir_list = os.path.join(root, "point_cloud_data", "tbx5a_segmentation" + "*")
+            n_tissue += 1
+
+    fluo_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "tbx5a_segmentation_lb" + "*"))
     fluo_dir_list = [fdir for fdir in fluo_dir_list if os.path.isdir(fdir)]
+    n_fluo_max = 2*n_tissue
+    n_fluo = 0
     for f, fluo_dir in enumerate(fluo_dir_list):
         fluo_df_list = sorted(glob.glob(os.path.join(fluo_dir, "*.csv")))
+        fluo_indices = np.random.choice(range(len(fluo_df_list)), size=len(fluo_df_list), replace=False)
+        fluo_df_list = [fluo_df_list[f] for f in fluo_indices]
         for df_path in tqdm(fluo_df_list, desc="Writing tbx5a datasets..."):
             df = pd.read_csv(df_path)
-            keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
-            df = df.loc[:, keep_cols]
-            df.rename(columns={"fluo_label": "label"}, inplace=True)
-            df["label"] = df["label"] + 4
-            df["class"] = ["tbx5a"] * df.shape[0]
-            df["class_id"] = [1] * df.shape[0]
-            # save
-            df_name = path_leaf(df_path).replace("_labels", "_fluo_labels")
-            df.to_csv(os.path.join(out_dir, df_name), index=False)
+
+            df = df.loc[df["size"] > 100, :]
+            if df.shape[0] > 4000:
+                keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
+                df = df.loc[:, keep_cols]
+                df.rename(columns={"fluo_label": "label"}, inplace=True)
+                df["label"] = df["label"] + 4
+                df["class"] = ["tbx5a"] * df.shape[0]
+                df["class_id"] = [1] * df.shape[0]
+
+                # save
+                df_name = path_leaf(df_path).replace("_labels", "_fluo_labels")
+                df.to_csv(os.path.join(out_dir, df_name), index=False)
+
+                n_fluo += 1
+
+            if n_fluo >= n_fluo_max:
+                break
 
 
 

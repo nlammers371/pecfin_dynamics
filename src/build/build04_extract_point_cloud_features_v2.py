@@ -32,13 +32,6 @@ def inplace_relu(m):
 def extract_point_cloud_features(root, point_cloud_size=8192, model_name='PointGPT_S', mdl_tag="", seg_pd_flag=False,
                                  cls_label=0, mdl_path=None, overwrite_flag=False, batch_size=16):
 
-    seg_classes = {'tissue': [0, 1, 2, 3], 'tbx5a': np.arange(4, 25).tolist()}
-    cat_list = list(seg_classes.keys())
-    seg_label_to_cat = {}  # {0:Airplane, 1:Airplane, ...49:Table}
-    for cat in seg_classes.keys():
-        for label in seg_classes[cat]:
-            seg_label_to_cat[label] = cat
-
     if mdl_path is None:
         mdl_path = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/PointGPT/part_seg.pth"
         
@@ -66,6 +59,25 @@ def extract_point_cloud_features(root, point_cloud_size=8192, model_name='PointG
         elif mdl_name == "seg01_best_model":
             num_part = 25  # number of distinct parts to segment
             num_classes = 2  # number of kinds of object
+
+            seg_classes = {'tissue': [0, 1, 2, 3], 'tbx5a': np.arange(4, 25).tolist()}
+            cat_list = list(seg_classes.keys())
+            seg_label_to_cat = {}  # {0:Airplane, 1:Airplane, ...49:Table}
+            for cat in seg_classes.keys():
+                for label in seg_classes[cat]:
+                    seg_label_to_cat[label] = cat
+
+        elif (mdl_name == "seg02_best_model") or (mdl_name == "seg03_best_model"):
+            num_part = 11  # number of distinct parts to segment
+            num_classes = 2  # number of kinds of object
+
+            seg_classes = {'tissue': [0, 1, 2, 3], 'tbx5a': np.arange(4, 11).tolist()}
+            cat_list = list(seg_classes.keys())
+            seg_label_to_cat = {}  # {0:Airplane, 1:Airplane, ...49:Table}
+            for cat in seg_classes.keys():
+                for label in seg_classes[cat]:
+                    seg_label_to_cat[label] = cat
+
         else:
             raise ValueError('Model type not supported')
 
