@@ -4,11 +4,11 @@ import numpy as np
 # set read/write paths
 # root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 root = "Y:\\data\\pecfin_dynamics\\"
-experiment_date_vec = ["20240711_01", "20240711_02", "20240712_01", "20240712_02"]
+experiment_date_vec = ["20240711_02"]#, "20240712_01", "20240712_02"]
 pretrained_model_vec = ["tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5"]  #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
 overwrite = True
 prob_thresh_range = np.arange(-9, 10, 3)
-well_range = np.arange(0, 7)
+well_range = None
 seg_res = 0.65
 
 for e, experiment_date in enumerate(experiment_date_vec):
