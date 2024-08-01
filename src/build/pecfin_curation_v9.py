@@ -18,8 +18,23 @@ from src.utilities.point_cloud_utils import farthest_point_sample
 
 def sample_reference_points(mlp_df, labels_df, point_df, npoints=50):
 
+    labels_u, labels_to = np.unique(labels_df.loc[:, "fin_label_pd"], return_inverse=True)
+    labels_per = np.ceil(npoints / len(labels_u)).astype(int)
+    ref_indices = []
+    for l, lb in enumerate(labels_u):
+        lbi = np.where(labels_u==lb)[0]
+        lb_indices = np.where(labels_to==lbi)[0]
+        if lb != 4:
+            ns = np.min([labels_per, len(lb_indices)])
+        else:
+            ns = np.min([5, len(lb_indices)])
+        if ns > 0:
+            # _, temp_indices = farthest_point_sample(labels_df.loc[lb_indices, ["Z", "Y", "X"]].to_numpy(), ns)
+            temp_indices = np.random.choice(lb_indices, size=ns, replace=False)
+            ref_indices += temp_indices.tolist()
+
     # select reference points
-    ref_points, ref_indices = farthest_point_sample(labels_df.loc[:, ["Z", "Y", "X"]].to_numpy(), npoints)
+    # ref_points, ref_indices = farthest_point_sample(labels_df.loc[:, ["Z", "Y", "X"]].to_numpy(), npoints)
 
     # transfer labels
     labels_df.loc[ref_indices, "fin_label_curr"] = labels_df.loc[ref_indices, "fin_label_pd"]
@@ -185,23 +200,23 @@ def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
 
 def load_mlp_data_v2(root, mlp_arch, n_points_per_set=400, intra_well_only=False, fin_flag=False, class_split=None):
 
-    point_path = os.path.join(root, "point_cloud_data", "nucleus_point_features", "")
+    point_path = os.path.join(root, "point_cloud_data", "point_features" + "_" + seg_type_global, "")
     if intra_well_only:
         n_points_per_set = 400
 
     if not fin_flag:
         if not binary_flag_global:
-            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation" + "_" + seg_type_global, "")
             if class_split is None:
                 class_split = np.asarray([0.32, 0.32, 0.32, 0.04])
                 class_ref_array = np.asarray([1, 2, 3, 4])
         else:
-            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
+            labeled_point_path = os.path.join(root, "point_cloud_data", "fin_segmentation_bin" + "_" + seg_type_global, "")
             if class_split is None:
                 class_split = np.asarray([0.5, 0.5])
                 class_ref_array = np.asarray([1, 2])
     else:
-        labeled_point_path = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
+        labeled_point_path = os.path.join(root, "point_cloud_data", "tbx5a_segmentation" + "_" + seg_type_global, "")
         if class_split is None:
             n_points_per_set = 100
             class_split = np.ones((50,)) / 50
@@ -221,17 +236,19 @@ def load_mlp_data_v2(root, mlp_arch, n_points_per_set=400, intra_well_only=False
             point_name = path_leaf(df_path).replace("labels", "points_features")
             point_df = pd.read_csv(os.path.join(point_path, point_name))
 
-            class_u, label_map = np.unique(lb_df["fin_label_final"], return_inverse=True)
-            train_indices = []
-            for ind, lb in enumerate(class_u):
-                options = np.where(label_map == ind)[0]
-                lb_indices = np.random.choice(options, class_split_int[class_ref_array==lb], replace=True)
-                train_indices.extend(lb_indices)
+            if np.all(~np.isnan(lb_df["fin_label_final"].to_numpy())):
+                class_u, label_map = np.unique(lb_df["fin_label_final"], return_inverse=True)
 
-            lb_df_temp = lb_df.loc[train_indices, ["nucleus_id", "fin_label_final"]]
-            point_df_temp = point_df.iloc[train_indices]
-            point_df_temp = point_df_temp.merge(lb_df_temp, how="left", on="nucleus_id")
-            df_out.append(point_df_temp)
+                train_indices = []
+                for ind, lb in enumerate(class_u):
+                    options = np.where(label_map == ind)[0]
+                    lb_indices = np.random.choice(options, class_split_int[class_ref_array==lb], replace=True)
+                    train_indices.extend(lb_indices)
+
+                lb_df_temp = lb_df.loc[train_indices, ["nucleus_id", "fin_label_final"]]
+                point_df_temp = point_df.iloc[train_indices]
+                point_df_temp = point_df_temp.merge(lb_df_temp, how="left", on="nucleus_id")
+                df_out.append(point_df_temp)
 
         df_out = pd.concat(df_out, axis=0, ignore_index=True)
         df_out["fin_label_curr"] = df_out["fin_label_final"]
@@ -292,14 +309,14 @@ def load_points_and_labels(root, file_prefix, time_int, fluo_flag=False):
 
     # check for point cloud dataset
     point_prefix = file_prefix + f"_time{time_int:04}"
-    point_path = os.path.join(root, "point_cloud_data", "nucleus_point_features", "")
+    point_path = os.path.join(root, "point_cloud_data", "point_features" + "_" + seg_type_global, "")
     if not fluo_flag:
         if not binary_flag_global:
-            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
+            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation" + "_" + seg_type_global, "")
         else:
-            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation_bin", "")
+            point_path_out = os.path.join(root, "point_cloud_data", "fin_segmentation_bin" + "_" + seg_type_global, "")
     else:
-        point_path_out = os.path.join(root, "point_cloud_data", "tbx5a_segmentation", "")
+        point_path_out = os.path.join(root, "point_cloud_data", "tbx5a_segmentation" + "_" + seg_type_global, "")
 
     if not os.path.isdir(point_path_out):
         os.makedirs(point_path_out)
@@ -323,7 +340,7 @@ def load_points_and_labels(root, file_prefix, time_int, fluo_flag=False):
     if not fluo_flag:
         labels_df.loc[labels_df["fin_label_curr"] == -1, "fin_label_curr"] = 0
     else:
-        labels_df["fin_label_curr"] = labels_df["tbx5a-StayGold_fluo_label"]
+        labels_df["fin_label_curr"] = labels_df["fluo_label"]
     labels_df["fin_label_pd"] = labels_df["fin_label_curr"]
 
     return point_df, labels_df, point_prefix, point_path_out
@@ -390,15 +407,16 @@ def label_update_function(event):
         lb_data[mask_zarr == 0] = 0
         lb_layer.data = lb_data
 
-def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, fluo_flag=False, binary_flag=False, mlp_arch=None,
+def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_int=0, fluo_flag=False, binary_flag=False, mlp_arch=None,
                          use_ref_points=True, intra_well_only=True):
 
     if mlp_arch is None:
         mlp_arch = (256, 64)
 
     # initialize global variables
-    global mlp_df, mdl, point_df, labels_df, train_counter, Y_probs, binary_flag_global, mask_zarr, label_mask, pd_layer, lb_layer
+    global mlp_df, mdl, point_df, labels_df, train_counter, Y_probs, binary_flag_global, mask_zarr, label_mask, pd_layer, lb_layer, seg_type_global
     binary_flag_global = binary_flag
+    seg_type_global = seg_type
 
     train_counter = 0
 
@@ -424,16 +442,19 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, fluo
     mlp_df = mlp_df_refined.loc[exp_filter & time_filter & well_filter]
 
     # perform initial fit if we have enough local or cross-well training data
-    if (len(mlp_df_all) > 10) and (not fluo_flag):
+    if False: #(len(mlp_df_all) > 10) and (not fluo_flag):
         labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_all)
         if use_ref_points == True:
-            mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
+            mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=50)
 
-    elif (len(mlp_df_refined) > 10) and (not fluo_flag):
+    elif False:  #(len(mlp_df_refined) > 10) and (not fluo_flag):
         labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_refined)
         if use_ref_points == True:
-            mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=30)
+            mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
 
+    elif "label_pd" in point_df.columns:
+        labels_df.loc[:, "fin_label_pd"] = point_df.loc[:, "label_pd"] + 1
+        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
     else:
         if not fluo_flag:
             labels_df.loc[:, "fin_label_pd"] = np.random.choice(np.asarray([1, 2, 3, 4]), labels_df.shape[0])
@@ -450,7 +471,7 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, fluo
     if not fluo_flag:
         labels_u = [1, 2, 3, 4]
     else:
-        labels_u = np.arange(0, 50)
+        labels_u = np.arange(0, 21)
     pd_mask = np.zeros_like(mask_zarr)
     lb_mask = np.zeros_like(mask_zarr)
     for lb in labels_u:
@@ -513,14 +534,14 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, time_int=0, fluo
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240425"
+    experiment_date = "20240424" #"20240712_02"
     overwrite = True
-    fluo_flag = True
-    seg_model = "tdTom-dim-log-v3"
+    fluo_flag = False
+    seg_model = "tdTom-dim-log-v3" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 1
-    time_int = 2
-    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num,
+    well_num = 4
+    time_int = 1
+    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="seg03_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64),
                     fluo_flag=fluo_flag, intra_well_only=True)
 
