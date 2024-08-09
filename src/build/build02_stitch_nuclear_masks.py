@@ -105,7 +105,9 @@ def restitch_masks(mask_stack_zarr_path, prob_zarr_path, thresh_range, min_mask_
         masks_out = morphology.remove_small_objects(masks_curr, min_mask_size)
 
         mask_aff_zarr[t] = masks_out
-        mask_aff_zarr.attrs[str(t)] = thresh_range
+        ams = mask_aff_zarr.attrs["prob_levels"]
+        ams[str(int(t))] = list(thresh_range)
+        mask_aff_zarr.attrs["prob_levels"] = ams
 
 def do_affinity_stitching(prob_array, grad_array, scale_vec, seg_res=None, prob_thresh_range=None,
                                                     niter=100, min_mask_size=5, max_mask_size=1e5):

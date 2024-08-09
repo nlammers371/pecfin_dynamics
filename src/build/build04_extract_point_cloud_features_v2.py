@@ -78,6 +78,17 @@ def extract_point_cloud_features(root, point_cloud_size=8192, model_name='PointG
                 for label in seg_classes[cat]:
                     seg_label_to_cat[label] = cat
 
+        elif (mdl_name == "tissue_only_best_model"):
+            num_part = 4  # number of distinct parts to segment
+            num_classes = 1  # number of kinds of object
+
+            seg_classes = {'tissue': [0, 1, 2, 3]}
+            cat_list = list(seg_classes.keys())
+            seg_label_to_cat = {}  # {0:Airplane, 1:Airplane, ...49:Table}
+            for cat in seg_classes.keys():
+                for label in seg_classes[cat]:
+                    seg_label_to_cat[label] = cat
+
         else:
             raise ValueError('Model type not supported')
 

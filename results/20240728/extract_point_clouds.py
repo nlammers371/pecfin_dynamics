@@ -3,8 +3,8 @@ from src.build.build04_extract_point_cloud_features_v2 import extract_point_clou
 
 root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 
-experiment_date_vec = ["20240711_02"] #["20240424", "20240425"] #["20240711_01", "20240712_01", "20240712_02"]
-seg_model_vec = ["tdTom-bright-log-v5"] #["tdTom-dim-log-v3", "tdTom-dim-log-v3"] #["tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5"]  #["log-v3", "log-v3", "log-v5"]
+experiment_date_vec = ["20240424", "20240425"] #["20240711_01", "20240712_01", "20240712_02"]
+seg_model_vec = ["tdTom-dim-log-v3", "tdTom-dim-log-v3"] #["tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5", "tdTom-bright-log-v5"]  #["log-v3", "log-v3", "log-v5"]
 
 # build point cloud files
 for e, experiment_date in enumerate(experiment_date_vec):

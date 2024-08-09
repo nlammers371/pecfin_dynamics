@@ -408,7 +408,7 @@ def label_update_function(event):
         lb_layer.data = lb_data
 
 def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_int=0, fluo_flag=False, binary_flag=False, mlp_arch=None,
-                         use_ref_points=True, intra_well_only=True):
+                         use_model_priors=True, intra_well_only=True):
 
     if mlp_arch is None:
         mlp_arch = (256, 64)
@@ -447,12 +447,13 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
         if use_ref_points == True:
             mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=50)
 
-    elif False:  #(len(mlp_df_refined) > 10) and (not fluo_flag):
+    elif (len(mlp_df_refined) > 10):
+        print("Loading prior manual labels")
         labels_df, _, _ = fit_mlp(labels_df, mdl, mlp_df_refined)
-        if use_ref_points == True:
-            mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
+        mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
 
-    elif "label_pd" in point_df.columns:
+    elif ("label_pd" in point_df.columns) and use_model_priors:
+        print("Loading model predictions")
         labels_df.loc[:, "fin_label_pd"] = point_df.loc[:, "label_pd"] + 1
         mlp_df, labels_df = sample_reference_points(mlp_df, labels_df, point_df, npoints=250)
     else:
@@ -483,6 +484,11 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
 
     lb_layer = viewer.add_labels(lb_mask, scale=scale_vec, name='labels', opacity=1.0, visible=True)
     pd_layer = viewer.add_labels(pd_mask, scale=scale_vec, name='prediction', opacity=0.25, visible=True)
+
+    # point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
+    #                                 size=5, features=point_df.loc[:, "Z"], face_color="Z",
+    #                                 face_colormap="Blues", visible=True, face_contrast_limits=[0, 80],
+    #                                 out_of_slice_display=True)
 
     if fluo_flag:
         lb_im_layer = viewer.add_image(lb_mask, scale=scale_vec, colormap="green", name='labels (ordered)', opacity=1.0,
@@ -534,14 +540,17 @@ def curate_pec_fins(root, experiment_date, well_num, seg_model, seg_type, time_i
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240424" #"20240712_02"
+    experiment_date = "20240712_02"# "20240712_01"
     overwrite = True
     fluo_flag = False
-    seg_model = "tdTom-dim-log-v3" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
+    use_model_priors = True
+    seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 4
-    time_int = 1
-    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="seg03_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
+    well_num = 19
+    time_int = 0
+    curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int, mlp_arch=(128, 64),
-                    fluo_flag=fluo_flag, intra_well_only=True)
+                    fluo_flag=fluo_flag, intra_well_only=True, use_model_priors=use_model_priors)
+
+
 

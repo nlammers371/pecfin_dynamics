@@ -106,7 +106,11 @@ def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None,
                     fluo_channels = [ch for ch in range(channel_dims) if ch != nuclear_channel]
                     fluo_names = [data_zarr.attrs["channel_names"][f] for f in fluo_channels]
 
-                elif (fluo_channels is None) | (tbx5a_flag == 0):
+                elif (len(data_zarr.shape) == 5) & (fluo_channels is not None) & (tbx5a_flag == 1):
+                    fluo_names = [data_zarr.attrs["channel_names"][f] for f in fluo_channels]
+
+                else:
+                    tbx5a_flag = 0
                     fluo_names = []
 
                 ################################
@@ -256,10 +260,10 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
             out_name = os.path.join(out_path, df_name)
             df_updated.to_csv(out_name, index=False)
 
-def make_segmentation_training_folder(root):
+def make_segmentation_training_folder(root, out_suffix="", fluo_share=1):
 
     # make output directory
-    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training_v3", "data", "")
+    out_dir = os.path.join(root, "point_cloud_data", "segmentation_training" + out_suffix, "data", "")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -287,7 +291,7 @@ def make_segmentation_training_folder(root):
 
     fluo_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "tbx5a_segmentation_lb" + "*"))
     fluo_dir_list = [fdir for fdir in fluo_dir_list if os.path.isdir(fdir)]
-    n_fluo_max = 2*n_tissue
+    n_fluo_max = fluo_share*n_tissue
     n_fluo = 0
     for f, fluo_dir in enumerate(fluo_dir_list):
         fluo_df_list = sorted(glob.glob(os.path.join(fluo_dir, "*.csv")))
@@ -296,7 +300,7 @@ def make_segmentation_training_folder(root):
         for df_path in tqdm(fluo_df_list, desc="Writing tbx5a datasets..."):
             df = pd.read_csv(df_path)
 
-            df = df.loc[df["size"] > 100, :]
+            # df = df.loc[df["size"] > 100, :]
             if df.shape[0] > 4000:
                 keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fluo_label"]
                 df = df.loc[:, keep_cols]

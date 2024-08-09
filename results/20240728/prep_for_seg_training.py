@@ -9,4 +9,4 @@ fluo_var = "tbx5a-StayGold_mean_nn"
 # generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=7)
 
 # make segmentation training folder
-make_segmentation_training_folder(root)
+make_segmentation_training_folder(root, out_suffix="_tissue_only", fluo_share=0)
