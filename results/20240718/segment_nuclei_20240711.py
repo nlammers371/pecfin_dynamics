@@ -14,9 +14,9 @@ pretrained_model0 = "Y:\\data\\pecfin_dynamics\\built_data\\cellpose_training\\s
 # root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 root = "Y:\\data\\pecfin_dynamics\\"
 # root = "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/"
-experiment_date_vec = ["20240711_02", "20240712_02"] #, "20240712_01", "20240712_02"] #, "20240425", "20240619", "20240620"]
-pretrained_model_vec = [pretrained_model0, pretrained_model0] #, pretrained_model0, pretrained_model0] #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
-nuclear_channel_vec = [0, 0] #, 0, 0] #[0, 1, 1, 0, 0]
+experiment_date_vec = ["20240711_02"] #, "20240712_01", "20240712_02"] #, "20240425", "20240619", "20240620"]
+pretrained_model_vec = [pretrained_model0] #, pretrained_model0, pretrained_model0] #[pretrained_model0, pretrained_model1, pretrained_model1, pretrained_model0, pretrained_model0]
+nuclear_channel_vec = [0] #, 0, 0] #[0, 1, 1, 0, 0]
 well_list = None
 for e, experiment_date in enumerate(experiment_date_vec):
     pretrained_model = pretrained_model_vec[e]

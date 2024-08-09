@@ -1,6 +1,6 @@
 from src.build.build00_export_nd2_to_zarr import export_nd2_to_zarr
 
-experiment_date_vec = ["20240712_02", "20240712_02"]
+experiment_date_vec = ["20240711_02"]
 root = "Y:\\data\\pecfin_dynamics\\"
 overwrite_flag = True
 nuclear_channel_vec = [0, 0]  #, 1, 1]
