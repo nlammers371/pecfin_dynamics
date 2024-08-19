@@ -11,20 +11,78 @@ from sklearn.neural_network import MLPClassifier
 import time
 import vispy.color
 import zarr
-from skimage.measure import regionprops
+from sklearn.neighbors import KDTree
+import networkx as nx
+
 def strip_dummy_cols(df):
     cols = df.columns
     keep_cols = [col for col in cols if "Unnamed" not in col]
     df = df[keep_cols]
     return df
 
+
+def calculate_adjacency_graph(df, k_nn=5):
+
+    # calculate KD tree and use this to determine k nearest neighbors for each point
+    xyz_array = df[["X", "Y", "Z"]]
+
+    # print(xyz_array)
+    tree = KDTree(xyz_array)
+
+    # get nn distances
+    nearest_dist, nearest_ind = tree.query(xyz_array, k=k_nn + 1)
+
+    # find average distance to kth closest neighbor
+    mean_nn_dist_vec = np.mean(nearest_dist, axis=0)
+    nn_thresh = mean_nn_dist_vec[k_nn]
+
+    # iterate through points and build adjacency network
+    G = nx.Graph()
+
+    for n in range(xyz_array.shape[0]):
+        node_to = str(n)
+        nodes_from = [str(f) for f in nearest_ind[n, 1:]]
+        weights_from = [w for w in nearest_dist[n, 1:]]
+
+        # add node
+        G.add_node(node_to)
+        # only allow edges that are within twice the average k_nn distance
+        allowed_edges = np.where(weights_from <= 2 * nn_thresh)[0]
+        for a in allowed_edges:
+            G.add_edge(node_to, nodes_from[a], weight=weights_from[a])
+
+    return G
+
+# calculate shortest paths to selected point in point cloud
+def calculate_network_distances(point, G):
+
+    dist_array = np.empty((len(G)))
+    if point:
+        graph_distances = nx.single_source_dijkstra_path_length(G, str(point))
+
+        for d in range(len(G)):
+            try:
+                dist_array[d] = graph_distances[str(d)]
+            except:
+                dist_array[d] = -1
+
+        max_dist = np.max(dist_array)
+        dist_array[np.where(dist_array == -1)[0]] = max_dist + 1
+    else:
+        dist_array[:] = 100
+
+    return dist_array
+
 def fit_mlp(curation_df, mdl, mlp_df, fluo_col=None):
     feature_cols = []
-    if fluo_col is not None:
-        feature_cols = [fluo_col + "_mean_nn", fluo_col + "_mean_nn_norm", fluo_col + "_dist"]
+    # if fluo_col is not None:
+    #     feature_cols = [fluo_col + "_mean_nn", fluo_col + "_mean_nn_norm", fluo_col + "_dist", fluo_col + "_dist_nn"]
 
-    feature_cols += [c for c in mlp_df.columns if "feat" in c]
+    feature_cols += [c for c in mlp_df.columns if "feat" in c] #+ ["well_num", "time_int", "date_norm"]
     X_train = mlp_df.loc[:, feature_cols]
+    date_norm = mlp_df["experiment_date"]
+
+
     Y_train = mlp_df.loc[:, "fin_label_curr"]
 
     print("Updating tissue predictions...")
@@ -32,13 +90,26 @@ def fit_mlp(curation_df, mdl, mlp_df, fluo_col=None):
 
     # get new predictions
     X_pd = point_df.loc[:, feature_cols]
-    Y_pd = mdl.predict(X_pd)
+    Y_probs = mdl.predict_proba(X_pd)
+    # Y_pd_point = np.argmax(Y_probs, axis=1)
+
+    input_classes = np.unique(Y_train)
+    Y_probs_full = np.zeros((Y_probs.shape[0], 4))
+    in_flags = np.isin(np.arange(4), input_classes)
+    Y_probs_full[:, in_flags] = Y_probs
+    # factor in nearest neighbor stats
+    nn_probs_full = Y_probs_full[nn_indices, :]
+    dist_mask = np.tile(nn_distances[:, :, np.newaxis] <= 15, (1, 1, 4))
+    nn_probs = np.squeeze(np.mean(np.multiply(dist_mask, nn_probs_full), axis=1))
+    nn_probs = np.divide(nn_probs, np.sum(nn_probs,1)[:, np.newaxis])
+    Y_pd_nn = np.argmax(nn_probs, axis=1)
+
     if curation_df is not None:
-        curation_df.loc[:, "fin_label_pd"] = (Y_pd + 1) / 4
+        curation_df.loc[:, "fin_label_pd"] = (Y_pd_nn + 1) / 4
     else:
         curation_df = None
 
-    return curation_df, Y_pd, mdl
+    return curation_df, Y_pd_nn, mdl, nn_probs
 
 def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
     # generate temporary DF to keep track of curation labels
@@ -65,16 +136,19 @@ def get_curation_data(labels_df, mlp_df, point_df, well_num, time_int):
         mlp_df = mlp_df_temp.copy()
 
     mlp_df = strip_dummy_cols(mlp_df)
+    date_norm = mlp_df["experiment_date"]
+    mlp_df["date_norm"] = date_norm - np.min(date_norm)
 
     return curation_df, mlp_df
 
 
 def load_mlp_data(root, curation_folder, n_mlp_nodes, n_layers):
-    curated_data_dir = os.path.join(root, "metadata", "fin_curation", "")
+
+    curated_data_dir = os.path.join(root, "metadata", "fin_curation", curation_folder, "")
     if not os.path.isdir(curated_data_dir):
         os.makedirs(curated_data_dir)
     # mdl_path = os.path.join(curated_data_dir, experiment_date + "_MLP_mdl.joblib")
-    mlp_data_path = os.path.join(curated_data_dir, curation_folder, "MLP_data.csv")
+    mlp_data_path = os.path.join(curated_data_dir,  "MLP_data.csv")
 
     mdl = MLPClassifier(random_state=1, max_iter=5000, hidden_layer_sizes=(n_mlp_nodes,) * n_layers)
     if os.path.isfile(mlp_data_path):
@@ -87,6 +161,7 @@ def load_mlp_data(root, curation_folder, n_mlp_nodes, n_layers):
     return mlp_df, mdl, mlp_data_path
 
 def load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int):
+
     # path to raw data
     raw_zarr_path = os.path.join(root, "built_data", "zarr_image_files", experiment_date, file_prefix + ".zarr")
     prob_zarr_path = os.path.join(root, "built_data", "cellpose_output", seg_model, experiment_date,
@@ -116,6 +191,8 @@ def load_points_and_labels(root, seg_model, experiment_date, file_prefix, time_i
         os.makedirs(point_path_out)
     point_df = pd.read_csv(point_path + point_prefix + "_nuclei.csv")
     point_df = strip_dummy_cols(point_df)
+    date_norm = point_df["experiment_date"]
+    point_df["date_norm"] = date_norm - np.min(date_norm)
 
     # check for pre-existing labels DF
     if os.path.isfile(point_path_out + point_prefix + "_nuclei.csv"):
@@ -132,7 +209,7 @@ def load_points_and_labels(root, seg_model, experiment_date, file_prefix, time_i
     return point_df, labels_df, point_prefix, point_path_out
 
 def on_points_click(layer, event):
-    global mlp_df, mdl
+    global mlp_df, mdl, train_counter
 
     if event.type == 'mouse_press' and event.button == 1 and layer.mode == "select":  # Left mouse button
         selected_index = layer.get_value(event.position, world=True, view_direction=event.view_direction,
@@ -170,7 +247,7 @@ def on_points_click(layer, event):
                 point_layer.features = point_features
 
             # update data frames
-            start = time.time()
+            # start = time.time()
             labels_df.loc[:, "fin_label_curr"] = ((point_layer.features.copy() * 4) - 1).to_numpy().astype(int)
 
             # updated training DF
@@ -182,9 +259,9 @@ def on_points_click(layer, event):
             mlp_df = pd.concat([train_orig, mlp_df_temp], axis=0)
             mlp_df = mlp_df[~mlp_df.index.duplicated(keep='first')]
 
-            if (mlp_df.shape[0] > 10): # & (train_counter > 5):
+            if (mlp_df.shape[0] > 10) & (train_counter > 5):
 
-                _, Y_pd, _ = fit_mlp(None, mdl, mlp_df, fluo_col)
+                _, Y_pd, _, Y_probs = fit_mlp(None, mdl, mlp_df, fluo_col)
 
                 # Update pd layer features
                 # pd_features = pd_layer.features.copy()
@@ -195,8 +272,8 @@ def on_points_click(layer, event):
 
                 train_counter = 0
 
-            # else:
-            #     train_counter += 1
+            else:
+                train_counter += 1
 
             # print(pd_layer.features.head(4))
             # pd_layer.loc[:, "fin_label_pd"] = Y_pd.copy()
@@ -210,10 +287,10 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
                     overwrite_flag=False, n_layers=1, n_mlp_nodes=10):
     
     # initialize global variables
-    global mlp_df, mdl, point_df, fluo_col, labels_df, train_counter
+    global mlp_df, mdl, point_df, fluo_col, labels_df, train_counter, Y_probs
 
     fluo_col = fluo_label
-    # train_counter = 0
+    train_counter = 0
 
     # get path to zarr file
     file_prefix = experiment_date + f"_well{well_num:04}"
@@ -227,14 +304,30 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
     mlp_df, mdl, mlp_data_path = load_mlp_data(root, curation_folder, n_mlp_nodes, n_layers)
 
     # second round of global variables
-    global curation_df, point_layer, global_df, pd_layer
+    global curation_df, point_layer, global_df, pd_layer, nn_distances, nn_indices
+
+    # make NN graph for label smoothing
+    nn_k = 15
+    tree = KDTree(point_df[["Z", "Y", "X"]], leaf_size=2)
+    nn_distances, nn_indices = tree.query(point_df[["Z", "Y", "X"]], k=nn_k + 1)
+
+    if fluo_label is not None:
+        # generate adjacency graph
+        G = calculate_adjacency_graph(point_df)
+
+        max_ind = np.argmax(point_df[fluo_col + '_mean_nn_norm'])
+        fluo_distances = calculate_network_distances(max_ind, G)
+        fluo99 = np.percentile(fluo_distances, 99.5)
+        fluo_distances[fluo_distances>fluo99] = fluo99
+        point_df[fluo_col + '_dist_nn'] = fluo_distances.copy()
 
     # process dataframes
     curation_df, mlp_df = get_curation_data(labels_df, mlp_df, point_df, well_num, time_int)
 
+    # fit model if we have enough training points
     curation_df.loc[:, "fin_label_curr"] = curation_df.loc[:, "fin_label_curr"] / 4
     if len(mlp_df) > 10:
-        curation_df, _, _ = fit_mlp(curation_df, mdl, mlp_df, fluo_col)
+        curation_df, _, _, Y_probs = fit_mlp(curation_df, mdl, mlp_df, fluo_col)
     else:
         curation_df.loc[:, "fin_label_pd"] = curation_df.loc[:, "fin_label_curr"].copy()
 
@@ -249,18 +342,15 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
     viewer = napari.view_image(prob_zarr, colormap="gray", scale=scale_vec,
                                contrast_limits=(-4, np.percentile(prob_zarr, 99.8)))
 
-
     # generate master point array to integrate results
     if fluo_col is not None:
         marker_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='tbx5a',
-                                        size=4, features=point_df.loc[:, fluo_col + "_dist"],
-                                        face_color=fluo_col + "_dist",
-                                        # face_color_cycle=label_color_cycle, visible=True)
+                                        size=4, features=point_df.loc[:, fluo_col + "_mean_nn"],
+                                        face_color=fluo_col + "_mean_nn",
                                         face_colormap="Greens", visible=True)
 
     point_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='point labels',
                                     size=4, features=curation_df.loc[:, "fin_label_curr"], face_color="fin_label_curr",
-                                    # face_color_cycle=label_color_cycle, visible=True)
                                     face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1])
 
     ## Add outlier label layer
@@ -305,7 +395,7 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
                                    face_color_cycle=body_cycle, visible=False)
 
     pd_layer = viewer.add_points(point_df.loc[:, ["Z", "Y", "X"]].to_numpy(), name='prediction',
-                                 size=4, features=curation_df.loc[:, "fin_label_pd"],
+                                 size=4, features=curation_df.loc[:, "fin_label_pd"], opacity=0.5,
                                  face_color="fin_label_pd",
                                  # face_color_cycle=label_color_cycle, visible=True)
                                  face_colormap=lb_colormap, visible=True, face_contrast_limits=[0, 1])
@@ -323,6 +413,7 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
 
     # add latest predictions
     labels_df["fin_label_pd"] = pd_layer.features
+    labels_df[["oultier_prob", "fin_prob", "yolk_prob", "body_prob"]] = Y_probs
     labels_df = labels_df.dropna(axis=1, how="all")
 
     # save condensed version without the features
@@ -337,10 +428,10 @@ def curate_pec_fins(root, curation_folder, experiment_date, seg_model, well_num,
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
     experiment_date = "20240425"
-    curation_folder = 'tbx5a_training'
     overwrite = True
     seg_model = "log-v3"
-    well_num = 17
+    curation_folder = "tbx5a_training"
+    well_num = 1
     curate_pec_fins(root, curation_folder=curation_folder, experiment_date=experiment_date, seg_model=seg_model, well_num=well_num,
                     time_int=50, overwrite_flag=False, n_mlp_nodes=100, n_layers=2, fluo_label='tbx5a-StayGold')
 

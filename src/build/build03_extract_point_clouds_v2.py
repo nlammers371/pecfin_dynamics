@@ -260,7 +260,7 @@ def generate_fluorescence_labels(fluo_df_path, fluo_var, nbins=21, bin_method="k
             out_name = os.path.join(out_path, df_name)
             df_updated.to_csv(out_name, index=False)
 
-def make_segmentation_training_folder(root, out_suffix="", fluo_share=1):
+def make_segmentation_training_folder(root, out_suffix="", nucleus_size_thresh=150, fluo_share=1):
 
     # make output directory
     out_dir = os.path.join(root, "point_cloud_data", "segmentation_training" + out_suffix, "data", "")
@@ -275,19 +275,21 @@ def make_segmentation_training_folder(root, out_suffix="", fluo_share=1):
         tissue_df_list = sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
         for df_path in tqdm(tissue_df_list, desc="Writing tissue datasets..."):
             df = pd.read_csv(df_path)
-            keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fin_label_final"]
-            df = df.loc[:, keep_cols]
-            df.rename(columns={"fin_label_final": "label"}, inplace=True)
-            df["label"] = df["label"] - 1
-            # df = df.loc[df["label"] < 3, :]  # remove outlier class
+            df = df.loc[df["size"] > nucleus_size_thresh, :]
+            if df.shape[0] > 4000:
+                keep_cols = ["Z", "Y", "X", "experiment_date", "well_num", "time_int", "nucleus_id", "fin_label_final"]
+                df = df.loc[:, keep_cols]
+                df.rename(columns={"fin_label_final": "label"}, inplace=True)
+                df["label"] = df["label"] - 1
+                # df = df.loc[df["label"] < 3, :]  # remove outlier class
 
-            df["class"] = ["tissue"]*df.shape[0]
-            df["class_id"] = [0] * df.shape[0]
-            # save
-            df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
-            df.to_csv(os.path.join(out_dir, df_name), index=False)
+                df["class"] = ["tissue"]*df.shape[0]
+                df["class_id"] = [0] * df.shape[0]
+                # save
+                df_name = path_leaf(df_path).replace("_labels", "_tissue_labels")
+                df.to_csv(os.path.join(out_dir, df_name), index=False)
 
-            n_tissue += 1
+                n_tissue += 1
 
     fluo_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "tbx5a_segmentation_lb" + "*"))
     fluo_dir_list = [fdir for fdir in fluo_dir_list if os.path.isdir(fdir)]
