@@ -12,6 +12,7 @@ from sklearn.neural_network import MLPClassifier
 import time
 import vispy.color
 import zarr
+from src.utilities.fin_class_def import FinData
 from sklearn.neighbors import KDTree
 import networkx as nx
 from src.utilities.point_cloud_utils import farthest_point_sample
@@ -51,11 +52,6 @@ def sample_reference_points(mlp_df, labels_df, point_df, npoints=50):
 
     return mlp_df, labels_df
 
-def strip_dummy_cols(df):
-    cols = df.columns
-    keep_cols = [col for col in cols if "Unnamed" not in col]
-    df = df[keep_cols]
-    return df
 
 def fit_mlp(labels_df, mdl, mlp_df):
 
