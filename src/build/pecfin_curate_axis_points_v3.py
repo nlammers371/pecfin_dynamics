@@ -383,68 +383,8 @@ def load_fin_object(root, file_prefix, time_int):
     # check to see if fin class object exists
     fin_data = FinData(data_root=root, name=point_prefix, tissue_seg_model=seg_type_global)
 
-
     return fin_data
 
-
-    # fin_path = os.path.join(root, "point_cloud_data", "fin_objects", "")
-    #
-    # # check for point cloud dataset
-    # point_path = os.path.join(root, "point_cloud_data", "point_features", seg_type_global, "")
-    # axis_path_out = os.path.join(root, "point_cloud_data", "axis_inference", seg_type_global, "")
-    #
-    # if not os.path.isdir(axis_path_out):
-    #     os.makedirs(axis_path_out)
-    #
-    # point_df_temp = pd.read_csv(point_path + point_prefix + "_points_features.csv")
-    # point_df_temp = strip_dummy_cols(point_df_temp)
-    # point_df = point_df_temp.copy()
-    #
-    # # check to see if manual tissue labels exist (otherwise we'll use model predictions)
-    # curation_path = os.path.join(root, "point_cloud_data", "fin_segmentation", "")
-    # dir_list = sorted(glob(curation_path + "*"))
-    # label_path = ""
-    # labels_df = []
-    # for dir_path in dir_list:
-    #     if os.path.isfile(dir_path + point_prefix + "_labels.csv"):
-    #         labels_df = pd.read_csv(curation_path + point_prefix + "_labels.csv")
-    #         labels_df = strip_dummy_cols(labels_df)
-    #         label_path = dir_path + point_prefix + "_labels.csv"
-    #
-    # if len(labels_df) == 0:
-    #     keep_cols = [col for col in point_df.columns if "feat" not in col]
-    #     labels_df = point_df.loc[:, keep_cols]
-    #     labels_df["fin_label_curr"] = point_df["label_pd"] + 1
-    #     labels_df["approved_flag"] = False
-    #
-    # # check for pre-existing labels DF
-    # if os.path.isfile(axis_path_out + point_prefix + "_axes.csv"):
-    #     axis_df = pd.read_csv(axis_path_out + point_prefix + "_axes.csv")
-    #     axis_df = strip_dummy_cols(axis_df)
-    #
-    # else:
-    #     # initialize dataframe
-    #     xyz_body = labels_df.loc[labels_df["fin_label_curr"] == 3, ["X", "Y", "Z"]].to_numpy().astype(float)
-    #     xyz_fin = labels_df.loc[labels_df["fin_label_curr"] == 1, ["X", "Y", "Z"]].to_numpy().astype(float)
-    #
-    #     id_vec = ["C", "A", "L", "D", "P", "R", "V"] + ["C", "Pr", "L", "D", "Di", "R", "V"]
-    #     tissue_id_vec = [3]*7 + [1]*7
-    #     tissue_name_vec = ["body"]*7 + ["fin"]*7
-    #     point_id_float = np.asarray([0, 1, 2, 3, 4, 5, 6] + [0, 1, 2, 3, 4, 5, 6]) / 6
-    #
-    #     axis_df = pd.DataFrame(id_vec, columns=["point_id"])
-    #
-    #     axis_df["point_id_float"] = point_id_float
-    #     axis_df["tissue_id"] = tissue_id_vec
-    #     axis_df["tissue_name"] = tissue_name_vec
-    #     axis_df[["X", "Y", "Z"]] = np.nan #np.concatenate((body_centroid[np.newaxis, :], xyz_min_array, xyz_max_array), axis=0)
-    #     axis_df[["X_pd", "Y_pd", "Z_pd"]] = np.nan
-    #
-    #     axis_df.loc[0, ["X", "Y", "Z"]] = np.mean(xyz_body, axis=0)
-    #     axis_df.loc[7, ["X", "Y", "Z"]] = np.mean(xyz_fin, axis=0)
-    #     axis_df[["approved_flag"]] = False
-    #
-    # return point_df, labels_df, axis_df, point_prefix, axis_path_out
 
 def set_axis_view(viewer):
 

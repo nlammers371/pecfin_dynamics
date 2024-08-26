@@ -2,6 +2,7 @@ import os
 import numpy as np
 import glob2 as glob
 import pandas as pd
+from setuptools.command.egg_info import overwrite_arg
 from tqdm import tqdm
 from skimage.measure import regionprops
 import zarr
@@ -9,6 +10,9 @@ from src.utilities.functions import path_leaf
 from sklearn.neighbors import KDTree
 import scipy
 from sklearn.preprocessing import KBinsDiscretizer
+from src.utilities.fin_class_def import FinData
+from sklearn.neighbors import KernelDensity
+from sklearn.decomposition import PCA
 
 def extract_nucleus_stats(root, experiment_date, model_name, fluo_channels=None, overwrite_flag=False):
 
@@ -322,6 +326,157 @@ def make_segmentation_training_folder(root, out_suffix="", nucleus_size_thresh=1
 
 
 
+def make_vae_training_data(root, seg_model, overwrite_flag=False, out_suffix="", nucleus_size_thresh=100,
+                           n_point_samples=2048, k_nn_thresh=3, min_points=25, scale_factor=25):
+
+    # (0) get list of datasets
+    #   -take from fin objects if available
+    #   -else take from v1 of manual curation
+    #   -else take from ML-generated labels
+    # (1) filter for fin only
+    # (2) apply QC (unless from fin object)
+    # (3) Orient axes and upsample
+    # (4) Save
+
+    # make output directory
+    out_dir = os.path.join(root, "point_cloud_data", "vae_training" + out_suffix, "data", "")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    # get comprehensive list of available training datasets
+    point_feature_dir = os.path.join(root, "point_cloud_data", "point_features", seg_model, "")
+    point_path_list = sorted(glob.glob(point_feature_dir + "*.csv"))
+    orig_prefix_list = np.asarray([path_leaf(f).replace("_points_features.csv", "") for f in point_path_list])
+    remaining_prefix_list = orig_prefix_list.copy()
+    
+    # generate master list of files to load
+    master_path_list = []
+    data_source_list = []
+    master_prefix_list = []
+
+    # check fin objects first
+    fin_object_path = os.path.join(root, "point_cloud_data", "fin_objects", "")
+    fin_object_list = sorted(glob.glob(fin_object_path + "*.pkl"))
+    obj_prefix_list = np.asarray([path_leaf(fp).replace("_fin_object.pkl", "") for fp in fin_object_list])
+
+    master_path_list += fin_object_list
+    data_source_list += ["object"] * len(fin_object_list)
+    master_prefix_list += list(obj_prefix_list)
+    remaining_prefix_list = remaining_prefix_list[~np.isin(remaining_prefix_list, obj_prefix_list)]
+
+    # check v1 manual curation next
+    manual_dir_list = glob.glob(os.path.join(root, "point_cloud_data", "manual_curation", "" ) + "*")
+    manual_dir_list = [tdir for tdir in manual_dir_list if os.path.isdir(tdir)]
+    manual_path_list = []
+
+    for t, tissue_dir in enumerate(manual_dir_list):
+        manual_path_list += sorted(glob.glob(os.path.join(tissue_dir, "*.csv")))
+
+    manual_path_list = np.asarray(manual_path_list)
+    manual_prefix_list = np.asarray([path_leaf(fp).replace("_labels.csv", "") for fp in manual_path_list])
+    manual_path_list = manual_path_list[np.isin(manual_prefix_list, remaining_prefix_list)]
+    manual_prefix_list = manual_prefix_list[np.isin(manual_prefix_list, remaining_prefix_list)]
+
+    master_path_list += list(manual_path_list)
+    data_source_list += ["manual"] * len(manual_prefix_list)
+    master_prefix_list += list(manual_prefix_list)
+    remaining_prefix_list = remaining_prefix_list[~np.isin(remaining_prefix_list, manual_prefix_list)]
+
+    # get the rest in original points folder
+    point_ft = np.isin(orig_prefix_list, remaining_prefix_list)
+    point_paths = np.asarray(point_path_list)[point_ft]
+
+    master_path_list += list(point_paths)
+    data_source_list += ["ml"] * len(point_paths)
+    master_prefix_list += list(orig_prefix_list[point_ft])
+
+    keep_cols = ["Z", "Y", "X", "experiment_date", "size", "seg_model", "data_source", "well_num", "time_int", "fin_label_curr"]
+
+    ####
+    # Iterate through paths and load data
+    for d, df_path in enumerate(tqdm(master_path_list, "Saving point datasets...")):
+
+        point_prefix = master_prefix_list[d]
+        out_path = os.path.join(out_dir, point_prefix + ".csv")
+        prev_flag = os.path.isfile(out_path)
+
+        if not prev_flag or overwrite_flag:
+            # determine correct protocol based off of datasource
+            data_source = data_source_list[d]
+
+            if data_source == "object":
+                fin_data = FinData(data_root=root, name=point_prefix, tissue_seg_model=seg_model)
+                fin_df = fin_data.full_point_data
+                fin_df["data_source"] = "object"
+
+            elif data_source == "manual":
+                fin_df = pd.read_csv(df_path)
+                fin_df["fin_label_curr"] = fin_df["fin_label_final"].copy()
+                fin_df["data_source"] = "manual"
+
+            elif data_source == "ml":
+                fin_df = pd.read_csv(df_path)
+                fin_df["fin_label_curr"] = fin_df["label_pd"].copy() + 1
+                fin_df["data_source"] = "ml"
+
+            else:
+                raise Exception("Data source not recognized")
+
+            # filter for only pec fin nuclei
+            fin_df = fin_df.loc[fin_df["fin_label_curr"] == 1, keep_cols]
+            fin_df.reset_index(inplace=True, drop=True)
+            # apply basic QC filters
+            # calculate NN using KD tree
+            xyz_array = fin_df.loc[:, ["X", "Y", "Z"]].to_numpy()
+            if xyz_array.shape[0] > min_points:
+                tree = KDTree(xyz_array)
+                nearest_dist, nearest_ind = tree.query(xyz_array, k=k_nn_thresh + 1)
+
+                nn_mean = np.mean(nearest_dist, axis=0)
+                nn_scale = nn_mean[1]
+                space_outliers = (nearest_dist[:, k_nn_thresh] > 2 * nn_scale).ravel()
+
+                #########
+                # get size-based outliers
+                size_outliers = (fin_df.loc[:, ["size"]] < nucleus_size_thresh).to_numpy().ravel()
+
+                # update the data array
+                outlier_flags = size_outliers | space_outliers
+                fin_df = fin_df.loc[~outlier_flags, :] # set to outlier class
+                fin_df.reset_index(inplace=True, drop=True)
+
+                if fin_df.shape[0] > min_points:
+                    xyz_array = fin_df.loc[:, ["X", "Y", "Z"]].to_numpy()
+                    # orient fin relative to main axes
+                    if data_source == "object" and point_prefix == fin_data.name:
+                        fin_axes = fin_data.calculate_axis_array(fin_data.axis_fin)
+                    else:
+                        PCAFIN = PCA(n_components=3)
+                        PCAFIN.fit(xyz_array)
+                        fin_axes = PCAFIN.components_
+
+                    pca_array = np.matmul(xyz_array - np.mean(xyz_array, axis=0), fin_axes.T)
+
+                    # rescale and resample
+                    pca_array = pca_array / scale_factor
+                    # fit density
+                    kde = KernelDensity(bandwidth=0.1, kernel="gaussian").fit(pca_array)
+
+                    # draw samples
+                    pca_array_rs = kde.sample(n_samples=n_point_samples)
+
+                    # save
+                    fin_df_out = pd.DataFrame(pca_array_rs, columns=["X", "Y", "Z"])
+                    fin_df_out["class"] = "fin"
+                    fin_df_out["class_id"] = 1
+                    fin_df_out["experiment_date"] = fin_df.loc[0, "experiment_date"]
+                    fin_df_out["well_num"] = fin_df.loc[0, "well_num"]
+                    fin_df_out["time_int"] = fin_df.loc[0, "time_int"]
+                    fin_df_out["point_prefix"] = point_prefix
+                    fin_df_out["seg_model"] = fin_df.loc[0, "seg_model"]
+                    fin_df_out["data_source"] = data_source
+
+                    fin_df_out.to_csv(out_path, index=False)
 
 
 
