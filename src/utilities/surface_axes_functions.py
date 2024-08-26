@@ -1,6 +1,12 @@
 import numpy as np
 from scipy.integrate import quad
 
+def strip_dummy_cols(df):
+    cols = df.columns
+    keep_cols = [col for col in cols if "Unnamed" not in col]
+    df = df[keep_cols]
+    return df
+
 def calculate_path_distance(FDECAB, p0, p1):
     dx = p0[0] - p1[0]
     dy = p0[1] - p1[1]
