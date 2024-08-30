@@ -417,6 +417,7 @@ def set_surf_view(viewer):
     fin_point_layer.visible = True
     prob_layer_fin.visible = False
     label_layer_fin.visible = False
+    label_layer.visible = False
     fin_surface_layer.visible = True
 
 def toggle_body_axis_approval(viewer):
@@ -603,8 +604,10 @@ def label_update_function(event):
         # toggle_fin_axis_approval(viewer)
         fin_axis_layer.data = fin_data.axis_fin.loc[:, ["Z", "Y", "X"]].to_numpy()
         fin_point_layer.data = fin_data.full_point_data.loc[fin_data.full_point_data["fin_label_curr"] == 1,["Z", "Y", "X"]].to_numpy()
-        # fin_point_layer.data = fin_data.full_point_data.loc[
-        #     fin_data.full_point_data["fin_label_curr"] == 1, ["Z", "Y", "X"]].to_numpy()
+        #
+        if np.any(fin_data.fin_surf_points):
+            surf_data = (fin_data.fin_surf_points[:, ::-1], fin_data.fin_surf_faces, fin_data.fin_surf_points[:, 2])
+            fin_surface_layer.data = surf_data
 
 def on_points_click(layer, event):
 
@@ -630,6 +633,10 @@ def on_points_click(layer, event):
             # update fits
             fin_data.curation_update_sequence()
 
+            if np.any(fin_data.fin_surf_points):
+                surf_data = (fin_data.fin_surf_points[:, ::-1], fin_data.fin_surf_faces, fin_data.fin_surf_points[:, 2])
+                fin_surface_layer.data = surf_data
+
 
 def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, time_int=None, mlp_arch=None,
                          handle_scale=150, show_approved_frames=False, update_curation_info=False):
@@ -643,7 +650,7 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
     # initialize global variables
     global mlp_df, mdl, mask_zarr_fin, label_mask, mask_zarr_fin, label_layer_fin, viewer, fin_point_layer, \
         seg_type_global, handle_scale_global, body_axis_layer, fin_axis_layer, fin_data, fin_surface_layer, \
-        prob_layer_all, prob_layer_fin, continue_curation, global_df_ind, global_iter_i, indices_to_curate
+        prob_layer_all, prob_layer_fin, continue_curation, global_df_ind, global_iter_i, indices_to_curate, label_layer
 
     continue_curation = True
     seg_type_global = seg_type
@@ -792,8 +799,8 @@ if __name__ == '__main__':
     show_approved_frames = False
     seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = None
-    time_int = None
+    well_num = 30
+    time_int = 0
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
 
