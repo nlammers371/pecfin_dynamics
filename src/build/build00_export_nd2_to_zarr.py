@@ -9,6 +9,7 @@ import threading
 import scipy.ndimage as ndi
 import os
 import nd2
+import dask.array as da
 from tqdm import tqdm
 from src.utilities.register_image_stacks import register_timelapse
 from src.utilities.extract_frame_metadata import extract_frame_metadata
@@ -29,18 +30,27 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
     imObject = nd2.ND2File(nd2_files[0])
     im_array_dask = imObject.to_dask()
     nd2_shape = im_array_dask.shape
-    if len(nd2_shape) == 4:
-        im_array_dask = im_array_dask[None, :, :, :, :]
-        nd2_shape = im_array_dask.shape
 
     n_time_points = metadata["n_time_points"]
     n_wells = metadata["n_wells"]
     n_channels = metadata["n_channels"]
 
+    well_shape = tuple([nd2_shape[0]]) + nd2_shape[2:]
+    if len(nd2_shape) == 4:
+        im_array_dask = im_array_dask[None, :, :, :, :]
+        nd2_shape = im_array_dask.shape
+        well_shape = tuple([nd2_shape[0]]) + nd2_shape[2:]
+
+    elif len(nd2_shape) == 5 and n_channels == 2:
+        im_array_dask = da.transpose(im_array_dask, (0, 2, 1, 3, 4))
+        im_array_dask = im_array_dask[None, :, :, :, :, :]
+        nd2_shape = im_array_dask.shape
+        well_shape = tuple([nd2_shape[2]]) + tuple([nd2_shape[0]]) + nd2_shape[3:]
+
     # get list of metadata keys to pass to wll zarrs
     meta_keys = list(metadata.keys())
     meta_keys = [key for key in meta_keys if key!="n_wells"]
-    multichannel_flag = len(nd2_shape) == 6
+    multichannel_flag = n_channels > 1
     if multichannel_flag and nuclear_channel is None:
         raise ValueError("nuclear channel must be provided for multichannel experiments")
 
@@ -56,11 +66,9 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
         prev_flag = os.path.isdir(zarr_file)
         # Initialize zarr array
         if not multichannel_flag:
-            well_shape = tuple([nd2_shape[0]]) + nd2_shape[2:]
             well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=(1,) + nd2_shape[2:])
         else:
-            well_shape = tuple([n_channels]) + tuple([n_time_points]) + tuple([nd2_shape[2]]) + nd2_shape[4:]
-            well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=tuple([1, 1]) + tuple([nd2_shape[2]]) + tuple(nd2_shape[4:]))
+            well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=tuple([1, 1]) + tuple(well_shape[-3:]))
 
         # add metadata
         for key in meta_keys:
@@ -85,7 +93,7 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
                 well_zarr[ti] = data_zyx
             else:
                 for chi in range(n_channels):
-                    data_zyx = np.squeeze(im_array_dask[ti, well_num, :, chi, :, :].compute())
+                    data_zyx = np.squeeze(im_array_dask[ti, well_num, chi, :, :, :].compute())
                     well_zarr[chi, ti] = data_zyx
 
         # register frames

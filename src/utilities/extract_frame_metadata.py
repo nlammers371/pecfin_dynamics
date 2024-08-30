@@ -6,7 +6,7 @@ from typing import Dict
 from src.utilities.functions import path_leaf
 import pandas as pd
 import nd2
-import openpyxl
+# import openpyxl
 import numpy as np
 import dask.array as da
 
@@ -53,20 +53,33 @@ def parse_nd2_metadata(nd2_path):
 
     imObject = nd2.ND2File(nd2_path)
     im_raw_dask = imObject.to_dask()
-    if len(im_raw_dask.shape) == 4:
-        im_raw_dask = im_raw_dask[None, :, :, :, :]
+    n_channels = len(imObject.metadata.channels)
+
+    # [well, channel, time, z, y, x]
+    if len(im_raw_dask.shape) == 4 and n_channels == 1:
+        im_raw_dask = im_raw_dask[None, None, :, :, :, :]
+
+    elif len(im_raw_dask.shape) == 5 and n_channels == 1:
+        im_raw_dask = im_raw_dask[:, None, :, :, :, :]
+
+    elif len(im_raw_dask.shape) == 5 and n_channels == 2:
+        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4))
+        im_raw_dask = im_raw_dask[:, :, None, :, :, :]
+
+    elif len(im_raw_dask.shape) == 6 and n_channels == 2:
+        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4, 5))
 
     im_shape = im_raw_dask.shape
-    n_z_slices = im_shape[2]
-    n_time_points = im_shape[0]
-    n_wells = im_shape[1]
+    n_z_slices = im_shape[3]
+    n_time_points = im_shape[2]
+    n_wells = im_shape[0]
 
     scale_vec = imObject.voxel_size()
 
     # extract frame times
     n_frames_total = imObject.frame_metadata(0).contents.frameCount
     frame_time_vec = [imObject.frame_metadata(i).channels[0].time.relativeTimeMs / 1000 for i in
-                      range(0, n_frames_total, im_shape[2])]
+                      range(0, n_frames_total, n_z_slices)]
 
     # check for common nd2 artifact where time stamps jump midway through
     dt_frame_approx = (imObject.frame_metadata(n_z_slices).channels[0].time.relativeTimeMs -
@@ -153,25 +166,32 @@ def extract_frame_metadata(
 
     nd2_path = image_list[0]
     imObject = nd2.ND2File(nd2_path)
-    im_array_dask = imObject.to_dask()
-    nd2_shape = im_array_dask.shape
-    if len(nd2_shape) == 4:
-        im_array_dask = im_array_dask[None, :, :, :, :]
-        nd2_shape = im_array_dask.shape
+    im_raw_dask = imObject.to_dask()
+
+    n_channels = len(imObject.metadata.channels)
+
+    # [well, channel, time, z, y, x]
+    if len(im_raw_dask.shape) == 4 and n_channels == 1:
+        im_raw_dask = im_raw_dask[None, None, :, :, :, :]
+
+    elif len(im_raw_dask.shape) == 5 and n_channels == 1:
+        im_raw_dask = im_raw_dask[:, None, :, :, :, :]
+
+    elif len(im_raw_dask.shape) == 5 and n_channels == 2:
+        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4))
+        im_raw_dask = im_raw_dask[:, :, None, :, :, :]
+
+    elif len(im_raw_dask.shape) == 6 and n_channels == 2:
+        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4, 5))
+
+    nd2_shape = im_raw_dask.shape
 
     metadata = dict({})
-    metadata["n_time_points"] = nd2_shape[0]
-    metadata["n_wells"] = nd2_shape[1]
-    n_z = nd2_shape[2]
-    if len(nd2_shape) == 6:
-        n_channels = nd2_shape[3]
-        n_x = nd2_shape[5]
-        n_y = nd2_shape[4]
-    elif len(nd2_shape) == 5:
-        n_channels = 1
-        n_x = nd2_shape[4]
-        n_y = nd2_shape[3]
-
+    metadata["n_time_points"] = nd2_shape[2]
+    metadata["n_wells"] = nd2_shape[0]
+    n_z = nd2_shape[-3]
+    n_x = nd2_shape[-1]
+    n_y = nd2_shape[-2]
 
     metadata["n_channels"] = n_channels
     metadata["zyx_shape"] = tuple([n_z, n_y, n_x])
