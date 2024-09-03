@@ -61,7 +61,7 @@ class FinData:
             self.initialization_sequence()
 
     def load_from_file(self):
-        print("Loading saved pec fin data...")
+        # print("Loading saved pec fin data...")
         """
         Load the entire FinData object from a pickle file.
 
@@ -194,6 +194,7 @@ class FinData:
             points = xyz_fin / np.max(xyz_fin)
 
             fin_hull = alphashape.alphashape(points, alpha)  # only works on normalized coordinates
+            self.alpha_surf_scale = np.max(xyz_fin)
 
             fin_hull.vertices = fin_hull.vertices * np.max(xyz_fin)  # shift back to spatial scale
 
@@ -485,7 +486,7 @@ class FinData:
     def calculate_axis_array(self, axis_df):
         point_array = axis_df.loc[1:, ["X", "Y", "Z"]].to_numpy()
         vec_array = point_array[:3, :] - point_array[3:, :]
-        vec_array = vec_array / np.linalg.norm(vec_array, axis=1)
+        vec_array = np.divide(vec_array, np.linalg.norm(vec_array, axis=1))
         return vec_array 
 
     def fit_fin_surface(self, samp_frac=0.2, nn_thresh=6.5):
