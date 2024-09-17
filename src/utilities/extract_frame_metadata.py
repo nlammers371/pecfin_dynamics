@@ -15,7 +15,7 @@ def parse_plate_metadata(root, experiment_date, sheet_names=None):
     plate_directory = os.path.join(root, "metadata", "plate_maps", experiment_date + "_plate_map.xlsx")
 
     if sheet_names is None:
-        sheet_names = ["series_number_map", "genotype", "start_age_hpf"]
+        sheet_names = ["series_number_map", "genotype", "start_age_hpf", "chem_perturbation"]
 
     row_letters = ["A", "B", "C", "D", "E", "F", "G", "H"]
     col_nums = [i for i in range(12)]
@@ -39,12 +39,17 @@ def parse_plate_metadata(root, experiment_date, sheet_names=None):
     genotype_vec = xl_temp.parse(sheet_names[1]).iloc[0:8, 1:13].values.ravel()
     genotype_vec = genotype_vec[nn_indices]
 
+    # extract chemical info
+    chem_vec = xl_temp.parse(sheet_names[3]).iloc[0:8, 1:13].values.ravel()
+    chem_vec = chem_vec[nn_indices]
+
     # get list of well ID coordinates
     well_coord_list = well_coord_list[nn_indices]
 
     plate_df = pd.DataFrame(series_vec[:, np.newaxis], columns=["nd2_series"])
     plate_df["well_id"] = well_coord_list
     plate_df["genotype"] = genotype_vec
+    plate_df["chem_i"] = chem_vec
     plate_df["start_age_hpf"] = start_age_hpf
 
     return plate_df
@@ -57,7 +62,7 @@ def parse_nd2_metadata(nd2_path):
 
     # [well, channel, time, z, y, x]
     if len(im_raw_dask.shape) == 4 and n_channels == 1:
-        im_raw_dask = im_raw_dask[None, None, :, :, :, :]
+        im_raw_dask = im_raw_dask[:, None, None, :, :, :]
 
     elif len(im_raw_dask.shape) == 5 and n_channels == 1:
         im_raw_dask = im_raw_dask[:, None, :, :, :, :]
@@ -172,7 +177,7 @@ def extract_frame_metadata(
 
     # [well, channel, time, z, y, x]
     if len(im_raw_dask.shape) == 4 and n_channels == 1:
-        im_raw_dask = im_raw_dask[None, None, :, :, :, :]
+        im_raw_dask = im_raw_dask[:, None, None, :, :, :]
 
     elif len(im_raw_dask.shape) == 5 and n_channels == 1:
         im_raw_dask = im_raw_dask[:, None, :, :, :, :]
