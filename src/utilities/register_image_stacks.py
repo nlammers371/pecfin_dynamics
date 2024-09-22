@@ -7,6 +7,45 @@ import os
 import glob2 as glob
 from src.utilities.functions import path_leaf
 
+def registration_wrapper(root, experiment_date, well_index, model_name, overwrite_flag=False):
+
+    # metadata_dir = os.path.join(root, "metadata", "")
+
+    file_prefix = experiment_date + f"_well{well_index:04}"
+    # path to zarr files
+    data_path = os.path.join(root, "built_data", "zarr_image_files", experiment_date, file_prefix + ".zarr")
+    prob_path = os.path.join(root, "built_data", "cellpose_output", model_name, experiment_date, file_prefix + "_probs.zarr")
+    mask_stack_path = os.path.join(root, "built_data", "mask_stacks", model_name, experiment_date, file_prefix + '_mask_stacks.zarr')
+    mask_aff_path = os.path.join(root, "built_data", "mask_stacks", model_name, experiment_date, file_prefix + '_mask_aff.zarr')
+
+    # read the image data
+    data_zarr = zarr.open(data_path, mode="a")
+    prob_zarr = zarr.open(prob_path, mode="a")
+    mask_stack_zarr = zarr.open(mask_stack_path, mode="a")
+    mask_aff_zarr = zarr.open(mask_aff_path, mode="a")
+
+    if "shift_array" not in list(data_zarr.attrs.keys()) or overwrite_flag:
+        print("registering " + file_prefix)
+
+        data_copy = np.asarray(data_zarr).copy()
+
+        # register dataset
+        _, shift_array = register_timelapse(data_copy)
+
+        # store shift results
+        data_zarr.attrs.update({"shift_array": shift_array.tolist()})
+        prob_zarr.attrs.update({"shift_array": shift_array.tolist()})
+        mask_stack_zarr.attrs.update({"shift_array": shift_array.tolist()})
+        mask_aff_zarr.attrs.update({"shift_array": shift_array.tolist()})
+
+    else:
+        shift_array = np.asarray(data_zarr.attrs["shift_array"])
+
+    return shift_array
+
+
+
+
 def register_timelapse(video: np.ndarray, mask_thresh=None) -> np.ndarray:
 
     # registration using channel 1
@@ -39,7 +78,7 @@ def register_timelapse(video: np.ndarray, mask_thresh=None) -> np.ndarray:
 
     return video, shift_array
 
-def registration_wrapper(root, experiment_date, model_name,register_masks=True,  scale_vec=None, overwrite=False):
+def registration_wrapper_archive(root, experiment_date, model_name,register_masks=True,  scale_vec=None, overwrite=False):
 
     if scale_vec is None:
         scale_vec = np.asarray([2.0, 0.55, 0.55])
