@@ -9,7 +9,7 @@ if __name__ == '__main__':
     segmentation_model = "tdTom-bright-log-v5"
     add_label_spacer = False
 
-    for well_num in range(14, 16):
+    for well_num in range(6, 7):
         print("######################################")
         print(f"##############WELL{well_num:03}#################")
         print("######################################")
