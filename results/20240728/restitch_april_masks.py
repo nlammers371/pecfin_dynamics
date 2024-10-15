@@ -2,7 +2,7 @@ import numpy as np
 import os
 from glob2 import glob
 from tqdm import tqdm
-from src.build.build02_stitch_nuclear_masks import restitch_masks
+from src.build._Archive.build02_stitch_nuclear_masks import restitch_masks
 from src.utilities.functions import path_leaf
 root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
 

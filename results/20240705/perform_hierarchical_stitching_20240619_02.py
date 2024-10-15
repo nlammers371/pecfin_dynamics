@@ -1,4 +1,4 @@
-from src.build.build02_stitch_nuclear_masks import stitch_cellpose_labels
+from src.build._Archive.build02_stitch_nuclear_masks import stitch_cellpose_labels
 import numpy as np
 
 # set read/write paths

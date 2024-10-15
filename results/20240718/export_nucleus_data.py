@@ -1,4 +1,4 @@
-from src.build.build00_export_nd2_to_zarr import export_nd2_to_zarr
+from src.build._Archive.build00_export_nd2_to_zarr import export_nd2_to_zarr
 
 experiment_date_vec = ["20240711_01", "20240711_02", "20240712_01", "20240712_02"]
 root = "Y:\\data\\pecfin_dynamics\\"

@@ -1,4 +1,4 @@
-from src.build.build00_export_nd2_to_zarr import export_nd2_to_zarr
+from src.build._Archive.build00_export_nd2_to_zarr import export_nd2_to_zarr
 
 experiment_date_vec = ["20240619", "20240620"]
 root = "/net/trapnell/vol1/home/nlammers/projects/data/pecfin_dynamics/"

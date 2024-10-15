@@ -1,4 +1,4 @@
-from src.build.build02_stitch_nuclear_masks import stitch_cellpose_labels
+from src.build._Archive.build02_stitch_nuclear_masks import stitch_cellpose_labels
 
 # set read/write paths
 # root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"

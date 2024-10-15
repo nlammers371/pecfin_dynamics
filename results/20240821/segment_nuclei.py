@@ -1,4 +1,4 @@
-from src.build.build01_segment_nuclei_zarr import cellpose_segmentation
+from src.build._Archive.build01_segment_nuclei_zarr import cellpose_segmentation
 
 # use XX environment
 

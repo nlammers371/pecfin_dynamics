@@ -1,4 +1,4 @@
-from src.build.build00_export_nd2_to_zarr import export_nd2_to_zarr
+from src.build._Archive.build00_export_nd2_to_zarr import export_nd2_to_zarr
 
 experiment_date_vec = ["20240425"] #, "20240424", "20240425"]
 root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"

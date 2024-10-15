@@ -377,11 +377,11 @@ def load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int):
     return im_prob, im_mask, scale_vec
 
 
-def load_fin_object(root, file_prefix, time_int):
+def load_fin_object(root, file_prefix, time_int, seg_type):
 
     point_prefix = file_prefix + f"_time{time_int:04}"
     # check to see if fin class object exists
-    fin_data = FinData(data_root=root, name=point_prefix, tissue_seg_model=seg_type_global)
+    fin_data = FinData(data_root=root, name=point_prefix, tissue_seg_model=seg_type)
 
     return fin_data
 
@@ -683,7 +683,7 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
         prob_zarr, mask_zarr, scale_vec = load_zarr_data(root, seg_model, experiment_date, file_prefix, time_int)
 
         # load point features and labels
-        fin_data = load_fin_object(root, file_prefix, time_int)
+        fin_data = load_fin_object(root, file_prefix, time_int, seg_type)
 
         # initialize viewer
         viewer = napari.Viewer(ndisplay=3)
@@ -792,15 +792,15 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240711_01"  # "20240712_01"
+    experiment_date = "20240619"  # "20240712_01"
     overwrite = True
     fluo_flag = False
     use_model_priors = True
     show_approved_frames = False
     seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 30
-    time_int = 0
+    well_num = 2
+    time_int = 155
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
 
