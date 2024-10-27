@@ -150,7 +150,7 @@ class FinData:
         # self.seg_approved = labels_df.loc[0, "approved_flag"]
         self.full_point_data_raw = labels_df
 
-    def clean_fin_data(self, size_thresh=100, k_nn=3):
+    def clean_fin_data(self, size_thresh=75, k_nn=3):
         # remove outliers from fin dataset
         ########
         # get spatial outliers
@@ -258,7 +258,7 @@ class FinData:
             point_pca.fit(xyz_body)
 
             # pca_array_body = point_pca.transform(xyz_body)
-            axes = point_pca.components_
+            axes = point_pca.components_[np.asarray([0, 2, 1]), :]
 
             # orient D-V axis
             if axes[2, 2] < 0:

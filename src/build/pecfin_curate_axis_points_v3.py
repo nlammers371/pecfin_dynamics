@@ -4,8 +4,9 @@ import napari
 import os
 from src.utilities.functions import path_leaf
 from glob2 import glob
-import skimage.io as skio
+# import skimage.io as skio
 import pandas as pd
+
 from sklearn.decomposition import PCA
 from joblib import dump, load
 from sklearn.neural_network import MLPClassifier, MLPRegressor
@@ -453,10 +454,10 @@ def toggle_label_approval(viewer):
     if fin_data.seg_approved:
         print("Tissue labels approved...")
         label_layer_fin.visible = True
-        label_layer_fin.opacity = 0.45
+        label_layer_fin.opacity = 0.65
     else:
         print("Tissue labels disapproved...")
-        label_layer_fin.opacity = 0.25
+        label_layer_fin.opacity = 0.35
         label_layer_fin.visible = True
 
 def exit_curation_loop(viewer):
@@ -709,12 +710,14 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
         prob_layer_fin = viewer.add_image(prob_zarr_fin, name="probabilities (fin region)", colormap="gray", scale=scale_vec, visible=False,
                                           contrast_limits=(-4, np.percentile(prob_zarr, 99.8)))
         # show tissue predictions
-        label_opacity = 0.25
+        label_opacity = 0.35
         if fin_data.seg_approved:
-            label_opacity = 0.5
+            label_opacity = 0.65
         label_layer = viewer.add_labels(pd_mask, scale=scale_vec, name='tissue predictions (static)', opacity=label_opacity, visible=False)
         label_layer_fin = viewer.add_labels(label_mask_fin, scale=scale_vec, name='tissue predictions (fin region)', opacity=label_opacity,
                                         visible=False)
+
+        label_layer_fin.brush_size = 20
 
         # add fin fit
         if np.any(fin_data.fin_surf_points):
@@ -768,7 +771,7 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
 
         viewer.bind_key("q", set_axis_view)  # toggle body axis approval
         viewer.bind_key("w", set_label_view) # toggle fin axis approval
-        viewer.bind_key("e", set_surf_view)  # toggle seg approval
+        viewer.bind_key("r", set_surf_view)  # toggle seg approval
 
         viewer.bind_key("s", save_fin_data)  # save
         viewer.bind_key("x", exit_curation_loop)  # save and exit loop
@@ -792,15 +795,15 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240619"  # "20240712_01"
+    experiment_date = "20240711_02"  # "20240712_01"
     overwrite = True
     fluo_flag = False
     use_model_priors = True
     show_approved_frames = False
     seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = 2
-    time_int = 155
+    well_num = None
+    time_int = None
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
 
