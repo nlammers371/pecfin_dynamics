@@ -802,10 +802,9 @@ if __name__ == '__main__':
     show_approved_frames = False
     seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
-    well_num = None
-    time_int = None
+    well_num = 53
+    time_int = 0
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
-
 
 

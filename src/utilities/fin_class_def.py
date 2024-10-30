@@ -1,9 +1,7 @@
 import numpy as np
 import pandas as pd
 import os
-
 import trimesh
-
 from src.utilities.surface_axes_functions import *
 from glob2 import glob
 import pickle
