@@ -11,6 +11,7 @@ from sklearn.decomposition import PCA
 from scipy.spatial import distance_matrix
 import itertools
 from scipy.spatial import Delaunay
+from sklearn.metrics import pairwise_distances
 
 class FinData:
     def __init__(self, name: str = "", data_root: str = "", point_features: pd.DataFrame = None, tissue_seg_model: str = "",
@@ -18,6 +19,7 @@ class FinData:
                  axis_body: pd.DataFrame=None, axis_body_approved: bool=False, axis_fin: pd.DataFrame = None,
                  axis_fin_approved: bool=False, yolk_surf_points: np.ndarray=None, yolk_surf_params: np.ndarray=None,
                  fin_surf_points: np.ndarray=None, fin_surf_faces: np.ndarray=None, fin_surf_params: np.ndarray=None,
+                 fin_plane_params: np.ndarray=None,
                  fin_alpha_surf: trimesh.Trimesh=None, fin_core_points: np.ndarray=None, handle_scale: float=125):
         """
         Initialize the FinData class.
@@ -44,6 +46,7 @@ class FinData:
         self.fin_surf_points = fin_surf_points
         self.fin_surf_faces = fin_surf_faces
         self.fin_surf_params = fin_surf_params
+        self.fin_plane_params = fin_plane_params
         self.fin_alpha_surf = fin_alpha_surf
         self.fin_core_points = fin_core_points
         
@@ -487,58 +490,133 @@ class FinData:
         vec_array = np.divide(vec_array, np.linalg.norm(vec_array, axis=1))
         return vec_array 
 
-    def fit_fin_surface(self, samp_frac=0.2, nn_thresh=6.5):
-        
+    # def fit_fin_surface(self, samp_frac=0.2, nn_thresh=6.5):
+    #
+    #     fin_data = self.full_point_data.loc[self.full_point_data["fin_label_curr"] == 1, ["X", "Y", "Z"]].to_numpy()
+    #     if np.any(fin_data):
+    #         fin_centerpoints = self.fin_core_points
+    #         fin_axis_df = self.axis_fin
+    #         fin_axes = self.calculate_axis_array(fin_axis_df)
+    #         # print(fin_axes)
+    #         # pca_fin = PCA(n_components=3)
+    #         # pca_fin.components_ = fin_axes
+    #         pca_centerpoints = np.matmul(fin_centerpoints - np.mean(fin_centerpoints, axis=0), fin_axes.T)
+    #         pca_fin_array = np.matmul(fin_data - np.mean(fin_data, axis=0), fin_axes.T)
+    #
+    #         fin_scale = np.mean(np.std(fin_data, axis=0))
+    #
+    #         base_thresh = np.percentile(pca_centerpoints[:, 0], 10)
+    #         tip_thresh = np.percentile(pca_fin_array[:, 0], 90)
+    #
+    #         n_fin_points = fin_centerpoints.shape[0]
+    #
+    #         # select base points
+    #         base_ft = pca_centerpoints[:, 0] <= base_thresh
+    #         base_indices = np.where(base_ft)[0]
+    #
+    #         # generate pseudopoints extending toward base of fin
+    #         # lr_vec = pca_fin.components_[1]  # this should be AP axis of fin, more or less
+    #
+    #         # calculate centroid
+    #         yolk_surf = self.yolk_surf_points
+    #         surf_cm = np.mean(fin_centerpoints[base_ft], axis=0)
+    #         closest_i = np.argmin(np.sqrt(np.sum((surf_cm - yolk_surf) ** 2, axis=1)))  # find closest surface point
+    #         closest_point = yolk_surf[closest_i]
+    #
+    #         surf_normal, _ = self.calculate_tangent_plane(self.yolk_surf_params, closest_point)
+    #         surf_normal = surf_normal / np.linalg.norm(surf_normal)
+    #
+    #         if surf_normal[2] > 0:
+    #             surf_normal = -surf_normal
+    #
+    #         # generate base pseudo-points to guide curvature of the fin
+    #         np.random.seed(1423)
+    #         n_base_points = int(samp_frac * n_fin_points)
+    #         surf_samples = np.random.choice(base_indices, n_base_points, replace=True)  # , p=dist_vec / np.sum(dist_vec))
+    #         scale_factors = 1 + np.random.rand(n_base_points, 1) * fin_scale / 10
+    #         base_points = fin_centerpoints[surf_samples] - np.multiply(scale_factors * nn_thresh, surf_normal)
+    #
+    #         tip_indices = np.where(pca_fin_array[:, 0] >= tip_thresh)[0]
+    #         tip_samples = np.random.choice(tip_indices, n_base_points, replace=True)
+    #         tip_points = fin_data[tip_samples]
+    #
+    #         fit_data = np.concatenate((fin_centerpoints, base_points, tip_points), axis=0)
+    #         fit_data_pca = np.matmul(fit_data - np.mean(fit_data, axis=0), fin_axes.T)
+    #
+    #         test_1 = np.arange(np.percentile(fit_data_pca[:, 1], 0), np.percentile(fit_data_pca[:, 1], 100), 1)
+    #         test_0 = np.arange(np.percentile(fit_data_pca[:, 0], 0), np.percentile(fit_data_pca[:, 0], 100), 1)
+    #         PCA0, PCA1 = np.meshgrid(test_0, test_1)
+    #         PC0 = PCA0.ravel()
+    #         PC1 = PCA1.ravel()
+    #
+    #         # adding heuristic to prevent poor fits
+    #         pca_scales = np.max(pca_fin_array, axis=0) - np.min(pca_fin_array, axis=0) #np.std(pca_fin_array, axis=0)
+    #         reg_flag = (pca_scales[0] < 1.75*pca_scales[2]) | (pca_scales[0] < 100)
+    #         # fin_fit1, loss1 = self.polyfit2d_fin(fit_data_pca, order=1)
+    #         fin_fit, _ = self.polyfit2d_fin(fit_data_pca, order=2, reg_flag=reg_flag)
+    #         PC_array = self.polyval2d_fin(np.c_[PC0, PC1], fin_fit)
+    #
+    #         tri = Delaunay(PC_array[:, :2])
+    #         faces = tri.simplices
+    #
+    #         # transform back
+    #         # XYZ_surf = np.dot(PC_array, fin_axes) + np.mean(PC_array, axis=0)
+    #         XYZ_surf = np.matmul(PC_array, np.linalg.inv(fin_axes.T)) + np.mean(fit_data, axis=0)
+    #         # store
+    #         self.fin_surf_params = fin_fit
+    #         self.fin_surf_points = XYZ_surf
+    #         self.fin_surf_faces = faces
+
+    def fit_fin_surface(self):
+
         fin_data = self.full_point_data.loc[self.full_point_data["fin_label_curr"] == 1, ["X", "Y", "Z"]].to_numpy()
         if np.any(fin_data):
+            pivot_mean = np.mean(fin_data, axis=0)
             fin_centerpoints = self.fin_core_points
             fin_axis_df = self.axis_fin
             fin_axes = self.calculate_axis_array(fin_axis_df)
-            # print(fin_axes)
-            # pca_fin = PCA(n_components=3)
-            # pca_fin.components_ = fin_axes
-            pca_centerpoints = np.matmul(fin_centerpoints - np.mean(fin_centerpoints, axis=0), fin_axes.T)
-            pca_fin_array = np.matmul(fin_data - np.mean(fin_data, axis=0), fin_axes.T)
 
-            fin_scale = np.mean(np.std(fin_data, axis=0))
+            # transform
+            pca_centerpoints = np.matmul(fin_centerpoints - pivot_mean, fin_axes.T)
+            pca_fin_array = np.matmul(fin_data - pivot_mean, fin_axes.T)
 
-            base_thresh = np.percentile(pca_centerpoints[:, 0], 10)
-            tip_thresh = np.percentile(pca_fin_array[:, 0], 90)
+            # Calculate distance to yolk surface
+            params = self.yolk_surf_params
 
-            n_fin_points = fin_centerpoints.shape[0]
+            x_min, y_min = fin_data[:, 0].min(), fin_data[:, 1].min()
+            x_max, y_max = fin_data[:, 0].max(), fin_data[:, 1].max()
+
+            # Create a mesh grid for x and y values
+            x_vals = np.linspace(x_min, x_max, 100)
+            y_vals = np.linspace(y_min, y_max, 100)
+            X, Y = np.meshgrid(x_vals, y_vals)
+
+            yolk_xyz = np.reshape(self.polyval2d(np.c_[X.ravel(), Y.ravel()], params).ravel(), (-1, 3))
+
+            dist_array = pairwise_distances(fin_data, yolk_xyz)
+            yolk_dist = np.min(dist_array, axis=1)
+            min_i = np.argmin(dist_array, axis=1)
+            yolk_signs = np.sign(fin_data[:, 2] - yolk_xyz[min_i, 2])
+            yolk_dist = np.multiply(yolk_dist, yolk_signs)
+
+            # get overall scale of fin data (do I need this?)
+            # fin_scale = np.mean(np.std(fin_data, axis=0))
+            base_pd_thresh = np.percentile(fin_centerpoints[:, 0], 50)
+            base_yolk_thresh = 3
+            #
+            # n_fin_points = fin_centerpoints.shape[0]
 
             # select base points
-            base_ft = pca_centerpoints[:, 0] <= base_thresh
-            base_indices = np.where(base_ft)[0]
-
-            # generate pseudopoints extending toward base of fin
-            # lr_vec = pca_fin.components_[1]  # this should be AP axis of fin, more or less
+            base_ft = (pca_fin_array[:, 0] <= base_pd_thresh) & (yolk_dist <= base_yolk_thresh)
+            # base_indices = np.where(base_ft)[0]
 
             # calculate centroid
-            yolk_surf = self.yolk_surf_points
-            surf_cm = np.mean(fin_centerpoints[base_ft], axis=0)
-            closest_i = np.argmin(np.sqrt(np.sum((surf_cm - yolk_surf) ** 2, axis=1)))  # find closest surface point
-            closest_point = yolk_surf[closest_i]
+            # yolk_surf = self.yolk_surf_points
+            surf_cm = np.mean(fin_data[base_ft], axis=0)
+            closest_i = np.argmin(np.sqrt(np.sum((surf_cm - yolk_xyz) ** 2, axis=1)))  # find closest surface point
+            closest_point = yolk_xyz[closest_i]
 
-            surf_normal, _ = self.calculate_tangent_plane(self.yolk_surf_params, closest_point)
-            surf_normal = surf_normal / np.linalg.norm(surf_normal)
-
-            if surf_normal[2] > 0:
-                surf_normal = -surf_normal
-
-            # generate base pseudo-points to guide curvature of the fin
-            np.random.seed(1423)
-            n_base_points = int(samp_frac * n_fin_points)
-            surf_samples = np.random.choice(base_indices, n_base_points, replace=True)  # , p=dist_vec / np.sum(dist_vec))
-            scale_factors = 1 + np.random.rand(n_base_points, 1) * fin_scale / 10
-            base_points = fin_centerpoints[surf_samples] - np.multiply(scale_factors * nn_thresh, surf_normal)
-
-            tip_indices = np.where(pca_fin_array[:, 0] >= tip_thresh)[0]
-            tip_samples = np.random.choice(tip_indices, n_base_points, replace=True)
-            tip_points = fin_data[tip_samples]
-
-            fit_data = np.concatenate((fin_centerpoints, base_points, tip_points), axis=0)
-            fit_data_pca = np.matmul(fit_data - np.mean(fit_data, axis=0), fin_axes.T)
+            fit_data_pca = pca_centerpoints
 
             test_1 = np.arange(np.percentile(fit_data_pca[:, 1], 0), np.percentile(fit_data_pca[:, 1], 100), 1)
             test_0 = np.arange(np.percentile(fit_data_pca[:, 0], 0), np.percentile(fit_data_pca[:, 0], 100), 1)
@@ -547,20 +625,56 @@ class FinData:
             PC1 = PCA1.ravel()
 
             # adding heuristic to prevent poor fits
-            pca_scales = np.max(pca_fin_array, axis=0) - np.min(pca_fin_array, axis=0) #np.std(pca_fin_array, axis=0)
-            reg_flag = (pca_scales[0] < 1.75*pca_scales[2]) | (pca_scales[0] < 100)
+            pca_scales = np.max(pca_fin_array, axis=0) - np.min(pca_fin_array, axis=0)  # np.std(pca_fin_array, axis=0)
+            # reg_flag = (pca_scales[0] < 1.75 * pca_scales[2]) | (pca_scales[0] < 100)
             # fin_fit1, loss1 = self.polyfit2d_fin(fit_data_pca, order=1)
-            fin_fit, _ = self.polyfit2d_fin(fit_data_pca, order=2, reg_flag=reg_flag)
+            fin_fit, _ = self.polyfit2d_fin(fit_data_pca, order=2, reg_flag=True)
             PC_array = self.polyval2d_fin(np.c_[PC0, PC1], fin_fit)
 
-            tri = Delaunay(PC_array[:, :2])
+            # calculate yolk normal plane and generate hybrid surface
+            surf_normal, _ = self.calculate_tangent_plane(self.yolk_surf_params, closest_point)
+            surf_normal = surf_normal / np.linalg.norm(surf_normal)
+
+            if surf_normal[2] > 0:
+                surf_normal = -surf_normal
+
+            surf_normal = np.matmul(np.reshape(surf_normal, (1, 3)), fin_axes.T)[0]
+            surf_normal = surf_normal / np.linalg.norm(surf_normal)
+
+            ### get plane
+            CP_pca = np.matmul(np.reshape(closest_point, (1, 3)) - pivot_mean, fin_axes.T)[0]
+            p_norm = np.cross(surf_normal, np.asarray([0, 1, 0]))
+            p_norm = p_norm / np.sqrt(np.sum(p_norm ** 2))
+            d = -np.sum(np.multiply(CP_pca, p_norm))
+            plane_coeffs = np.asarray([p_norm[0], p_norm[1], p_norm[2], d])
+
+            # Create a mesh grid for x and y values
+
+            ZP = -(plane_coeffs[0] * PCA0 + plane_coeffs[1] * PCA1 + plane_coeffs[3]) / plane_coeffs[2]
+
+            # generate weighted surface
+            dist_pd = PCA0.ravel() - CP_pca[2]
+            t = 3
+            kd = -25
+            wt_vec = np.divide(1, np.exp(-(dist_pd - kd) / t) + 1)
+            pd_agg = np.multiply(wt_vec, PC_array[:, 2]) + np.multiply(1 - wt_vec, ZP.ravel())
+
+            PC_out = PC_array.copy()
+            PC_out[:, 2] = pd_agg
+            keep_filter = pd_agg >= CP_pca[2] - 15
+            PC_out = PC_out[keep_filter, :]
+
+            tri = Delaunay(PC_out[:, :2])
             faces = tri.simplices
 
             # transform back
             # XYZ_surf = np.dot(PC_array, fin_axes) + np.mean(PC_array, axis=0)
-            XYZ_surf = np.matmul(PC_array, np.linalg.inv(fin_axes.T)) + np.mean(fit_data, axis=0)
+            XYZ_surf = np.matmul(PC_out, np.linalg.inv(fin_axes.T)) + pivot_mean
+
             # store
+            # print("New fin fit...")
             self.fin_surf_params = fin_fit
+            self.fin_plane_params = plane_coeffs
             self.fin_surf_points = XYZ_surf
             self.fin_surf_faces = faces
     
