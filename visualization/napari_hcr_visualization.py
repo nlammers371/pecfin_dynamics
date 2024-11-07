@@ -1,10 +1,7 @@
 from aicsimageio import AICSImage
 import numpy as np
 import napari
-from skimage.transform import resize
-# read the image data
 import os
-from ome_zarr.io import parse_url
 
 root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/hcr/peripheral_nerves_bmpi/"
 image_name = "DAPI_GFP_ctrl_fin_series.nd2"
