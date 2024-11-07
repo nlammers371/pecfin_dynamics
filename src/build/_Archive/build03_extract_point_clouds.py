@@ -3,19 +3,12 @@ import numpy as np
 import glob2 as glob
 import pandas as pd
 from tqdm import tqdm
-import torch
-from torch.utils.data import DataLoader
-from src.utilities.data_utilities import PointData
-from src.point_net.point_net import PointNetSegHead
 from skimage.measure import regionprops
 import zarr
 from src.utilities.functions import path_leaf
 from sklearn.neighbors import KDTree
 import scipy
 from sklearn.cluster import KMeans
-import math
-
-
 
 
 def ellipsoid_axis_loadings(central_moments):

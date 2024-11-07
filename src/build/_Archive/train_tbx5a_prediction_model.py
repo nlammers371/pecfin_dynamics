@@ -1,22 +1,16 @@
 import os
 import numpy as np
-import glob2 as glob
 import pandas as pd
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from src.utilities.data_utilities import PointDataReg
 from torch.utils.data.sampler import SubsetRandomSampler
-from src.point_net_nl.point_net import PointNetRegHead
-from src.point_net_nl.point_net_loss import PointNetRegLoss
+from src._Archive.point_net_nl.point_net import PointNetRegHead
+from src._Archive.point_net_nl.point_net_loss import PointNetRegLoss
 import torch.optim as optim
 import time
-from skimage.measure import regionprops
-import zarr
-from src.utilities.functions import path_leaf
-from sklearn.neighbors import KDTree
-import scipy
-from sklearn.cluster import KMeans
+
 
 def train_point_net_reg(root, training_dates, fluo_channel, num_epochs=100, learning_rate=0.0001,
                         point_cloud_size=4096, batch_size=32, train_frac=0.8):

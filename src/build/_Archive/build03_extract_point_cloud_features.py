@@ -6,7 +6,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from src.utilities.data_utilities import PointData
-from src.point_net.point_net import PointNetSegHead
+from src._Archive.point_net.point_net import PointNetSegHead
 from skimage.measure import regionprops
 import zarr
 from src.utilities.functions import path_leaf

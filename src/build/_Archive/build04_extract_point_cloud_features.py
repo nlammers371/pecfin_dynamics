@@ -6,13 +6,9 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from src.utilities.data_utilities import PointDataReg
-from src.point_net_nl.point_net_flex import PointNetRegHead
-from skimage.measure import regionprops
-import zarr
+from src._Archive.point_net_nl.point_net_flex import PointNetRegHead
 from src.utilities.functions import path_leaf
-from sklearn.neighbors import KDTree
-import scipy
-from sklearn.cluster import KMeans
+
 
 def extract_point_cloud_features(root, model_path, experiment_date, point_features=None,
                                  fluo_channel=None, overwrite_flag=False, point_cloud_size=4096, batch_size=16):
