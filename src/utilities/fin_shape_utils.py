@@ -41,10 +41,11 @@ def ellipsoid_axis_lengths(central_moments):
     radii = tuple([math.sqrt(5 * e) for e in eigvals])
     return radii, S
 
-def process_fin_df(fin_object, k_nn=20, d_lb=2, d_ub=15):
+def process_fin_df(fin_object, fin_df=None, k_nn=20, d_lb=2, d_ub=15):
 
-    fin_df = fin_object.full_point_data
-    fin_df = fin_df.loc[fin_df["fin_label_curr"] == 1, :]
+    if fin_df is None:
+        fin_df = fin_object.full_point_data
+        fin_df = fin_df.loc[fin_df["fin_label_curr"] == 1, :]
     fin_points = fin_df[["X", "Y", "Z"]].to_numpy()
 
     # orient to biological axes
@@ -187,7 +188,7 @@ def get_gaussian_masks(fin_df, mask, sample_res_um, z_factor, scale_vec, sample_
 
 def upsample_nucleus_points(nucleus_id_array, sample_res_um, points_per_nucleus):
 
-    regions = regionprops(nucleus_id_array)
+    regions = regionprops(nucleus_id_array, spacing=np.asarray([sample_res_um, sample_res_um, sample_res_um]))
     df_vec = []
 
     for rg in tqdm(regions):
@@ -218,7 +219,7 @@ def upsample_nucleus_points(nucleus_id_array, sample_res_um, points_per_nucleus)
 
     return fin_df_new
 
-def upsample_fin_point_cloud(fin_object, root=None, points_per_nucleus=25, z_factor=1.95, sample_res_um=0.25,
+def upsample_fin_point_cloud(fin_object, fin_df=None, root=None, points_per_nucleus=25, z_factor=1.95, sample_res_um=0.25,
                              seg_model="tdTom-bright-log-v5"):
     
     # get dataset name
@@ -228,7 +229,7 @@ def upsample_fin_point_cloud(fin_object, root=None, points_per_nucleus=25, z_fac
         root = fin_object.data_root
     
     # extract data frame containing nucleus centroids
-    fin_df = process_fin_df(fin_object)
+    fin_df = process_fin_df(fin_object, fin_df=fin_df)
 
     mask, scale_vec = get_fin_mask(point_name, fin_df, seg_model, root)
 
@@ -241,7 +242,7 @@ def upsample_fin_point_cloud(fin_object, root=None, points_per_nucleus=25, z_fac
     fin_df_new = upsample_nucleus_points(nucleus_id_array, sample_res_um, points_per_nucleus)
 
     # orient to biological axes
-    fin_points = fin_df_new[["X", "Y", "Z"]].to_numpy()
+    fin_points = fin_df_new[["Z", "Y", "X"]].to_numpy()
     fin_axis_df = fin_object.axis_fin
     fin_axes = fin_object.calculate_axis_array(fin_axis_df)
     fin_points_pca = np.matmul(fin_points - np.mean(fin_points, axis=0), fin_axes.T)
