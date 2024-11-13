@@ -251,8 +251,8 @@ def upsample_fin_point_cloud(fin_object, fin_df=None, root=None, points_per_nucl
     return fin_df_new
 
 
-def plot_mesh(plot_hull, surf_alpha=0.2):
-    tri_points = plot_hull.vertices[plot_hull.faces]
+def plot_mesh(plot_mesh, surf_alpha=0.2):
+    tri_points = plot_mesh.vertices[plot_mesh.faces]
 
     # extract the lists of x, y, z coordinates of the triangle vertices and connect them by a line
     Xe = []
@@ -274,8 +274,8 @@ def plot_mesh(plot_hull, surf_alpha=0.2):
         line=dict(color='rgb(70,70,70, 0.5)', width=1))
 
     lighting_effects = dict(ambient=0.4, diffuse=0.5, roughness=0.9, specular=0.9, fresnel=0.9)
-    mesh = go.Mesh3d(x=plot_hull.vertices[:, 0], y=plot_hull.vertices[:, 1], z=plot_hull.vertices[:, 2],
-                     opacity=surf_alpha, i=plot_hull.faces[:, 0], j=plot_hull.faces[:, 1], k=plot_hull.faces[:, 2],
+    mesh = go.Mesh3d(x=plot_mesh.vertices[:, 0], y=plot_mesh.vertices[:, 1], z=plot_mesh.vertices[:, 2],
+                     opacity=surf_alpha, i=plot_mesh.faces[:, 0], j=plot_mesh.faces[:, 1], k=plot_mesh.faces[:, 2],
                      lighting=lighting_effects)
     fig.add_trace(mesh)
 
@@ -285,24 +285,24 @@ def plot_mesh(plot_hull, surf_alpha=0.2):
     return fig, lines, mesh
 
 
-def fit_fin_hull(xyz_fin, alpha=20, n_faces=512, smoothing_strength=5):
+def fit_fin_mesh(xyz_fin, alpha=20, n_faces=512, smoothing_strength=5):
     # normalize for alphshape fitting
     mp = np.min(xyz_fin)
     points = xyz_fin - mp
     mmp = np.max(points)
     points = points / mmp
 
-    raw_hull = alphashape.alphashape(points, alpha)
+    raw_mesh = alphashape.alphashape(points, alpha)
 
     # copy
-    hull02_cc = raw_hull.copy()
+    hull02_cc = raw_mesh.copy()
 
     # keep only largest component
     hull02_cc = hull02_cc.split(only_watertight=False)
     hull02_sm = max(hull02_cc, key=lambda m: m.area)
 
     # fill holes
-    hull02_sm.fill_holes()
+    # hull02_sm.fill_holes()
 
     # smooth
     hull02_sm = trimesh.smoothing.filter_laplacian(hull02_sm, iterations=smoothing_strength)
@@ -323,4 +323,4 @@ def fit_fin_hull(xyz_fin, alpha=20, n_faces=512, smoothing_strength=5):
     # check
     wt_flag = hull02_rs.is_watertight
 
-    return hull02_rs, raw_hull, wt_flag
+    return hull02_rs, raw_mesh, wt_flag
