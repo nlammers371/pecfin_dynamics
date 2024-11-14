@@ -81,12 +81,13 @@ def get_fin_mask(point_name, fin_df, seg_model, root):
     date = point_name[:well_ind - 1]  # "20240711_01"
     well_num = int(point_name[well_ind + 4:well_ind + 8])
     path_string = os.path.join(root, "built_data", "mask_stacks", seg_model, date,
-                               date + f"_well{well_num:04}" + "*aff*")
+                               date + f"_well{well_num:04}" + "*aff.zarr*")
     mask_path = glob.glob(path_string)[0]
 
     # load mask and filter for nuclei that are inside the fin
+    time_int = int(point_name[-4:])
     mask_raw = zarr.open(mask_path, mode="r")
-    mask = np.squeeze(mask_raw[0])
+    mask = np.squeeze(mask_raw[time_int])
     mask[~np.isin(mask, fin_df.nucleus_id.to_numpy())] = 0
     scale_vec = mask_raw.attrs["voxel_size_um"]
 
@@ -128,6 +129,7 @@ def get_gaussian_masks(fin_df, mask, sample_res_um, z_factor, scale_vec, sample_
     buffer = 5 / sample_res_um
 
     for rg in tqdm(regions):
+
         # iterate through masks
         mask_id = rg.label
         nn_scale = fin_df.loc[fin_df["nucleus_id"] == mask_id, "nn_scale_um"].to_numpy()[0]
@@ -137,13 +139,22 @@ def get_gaussian_masks(fin_df, mask, sample_res_um, z_factor, scale_vec, sample_
         MU = np.asarray(rg["Centroid"])
         MU[0] = MU[0] * z_factor  # make sure to get correctly scaled z centroid locations
         r_vals, CORR = ellipsoid_axis_lengths(cm)
+
+        # check for singular matrix
+        cc = rg.coords_scaled
+        if np.linalg.det(CORR) == 0:
+            v_vec = np.var(cc, axis=0)
+            v_vec[v_vec < 1] = 1
+            CORR[np.eye(3)==1] = v_vec
+            # print("fix")
+
         factor = np.min([np.max([nn_scale / r_vals[0], 1]), 2])
 
-        COV = 5 * CORR * factor ** 2  # see here for why there is a factor of 5 https://forum.image.sc/t/scikit-image-regionprops-minor-axis-length-in-3d-gives-first-minor-radius-regardless-of-whether-it-is-actually-the-shortest/59273/2
+        COV = 5 * CORR * factor ** 2 # see here for why there is a factor of 5 https://forum.image.sc/t/scikit-image-regionprops-minor-axis-length-in-3d-gives-first-minor-radius-regardless-of-whether-it-is-actually-the-shortest/59273/2
         # COV = CORR#np.matmul(CORR, CORR.T)
 
         # Extract the region from the original 3D image using the bounding box
-        cc = rg.coords_scaled
+
         cc[:, 0] = cc[:, 0] * z_factor
         min_z, min_y, min_x = np.asarray(np.min(cc, axis=0) - buffer)  # + np.asarray([z0, y0, x0])
         max_z, max_y, max_x = np.asarray(np.max(cc, axis=0) + buffer)  # + np.asarray([z0, y0, x0])
@@ -160,10 +171,14 @@ def get_gaussian_masks(fin_df, mask, sample_res_um, z_factor, scale_vec, sample_
         zyx = np.c_[zv.ravel(), yv.ravel(), xv.ravel()]
 
         # calculate probabilities (modeling as multivariate gaussian)
-        p = multivariate_normal.pdf(zyx, mean=MU, cov=COV)
-        # p = multivariate_normal.pdf(xyz_array, mean=MU, cov=COV[::-1, ::-1])
-        p = p / np.max(p)
-        P = np.reshape(p, zv.shape)  # x_grid.shape)
+        try:
+            p = multivariate_normal.pdf(zyx, mean=MU, cov=COV)
+            # p = multivariate_normal.pdf(xyz_array, mean=MU, cov=COV[::-1, ::-1])
+
+            p = p / np.max(p)
+            P = np.reshape(p, zv.shape)  # x_grid.shape)
+        except:
+            print("why?")
 
         # take high prob pixels
         wv = nucleus_weight_array[min_row:max_row, min_col:max_col, min_depth:max_depth]
@@ -251,8 +266,8 @@ def upsample_fin_point_cloud(fin_object, fin_df=None, root=None, points_per_nucl
     return fin_df_new
 
 
-def plot_mesh(plot_mesh, surf_alpha=0.2):
-    tri_points = plot_mesh.vertices[plot_mesh.faces]
+def plot_mesh(plot_hull, surf_alpha=0.2):
+    tri_points = plot_hull.vertices[plot_hull.faces]
 
     # extract the lists of x, y, z coordinates of the triangle vertices and connect them by a line
     Xe = []
@@ -274,8 +289,8 @@ def plot_mesh(plot_mesh, surf_alpha=0.2):
         line=dict(color='rgb(70,70,70, 0.5)', width=1))
 
     lighting_effects = dict(ambient=0.4, diffuse=0.5, roughness=0.9, specular=0.9, fresnel=0.9)
-    mesh = go.Mesh3d(x=plot_mesh.vertices[:, 0], y=plot_mesh.vertices[:, 1], z=plot_mesh.vertices[:, 2],
-                     opacity=surf_alpha, i=plot_mesh.faces[:, 0], j=plot_mesh.faces[:, 1], k=plot_mesh.faces[:, 2],
+    mesh = go.Mesh3d(x=plot_hull.vertices[:, 0], y=plot_hull.vertices[:, 1], z=plot_hull.vertices[:, 2],
+                     opacity=surf_alpha, i=plot_hull.faces[:, 0], j=plot_hull.faces[:, 1], k=plot_hull.faces[:, 2],
                      lighting=lighting_effects)
     fig.add_trace(mesh)
 
@@ -285,24 +300,24 @@ def plot_mesh(plot_mesh, surf_alpha=0.2):
     return fig, lines, mesh
 
 
-def fit_fin_mesh(xyz_fin, alpha=20, n_faces=512, smoothing_strength=5):
+def fit_fin_mesh(xyz_fin, alpha=20, n_faces=5000, smoothing_strength=5):
     # normalize for alphshape fitting
     mp = np.min(xyz_fin)
     points = xyz_fin - mp
     mmp = np.max(points)
     points = points / mmp
 
-    raw_mesh = alphashape.alphashape(points, alpha)
+    raw_hull = alphashape.alphashape(points, alpha)
 
     # copy
-    hull02_cc = raw_mesh.copy()
+    hull02_cc = raw_hull.copy()
 
     # keep only largest component
     hull02_cc = hull02_cc.split(only_watertight=False)
     hull02_sm = max(hull02_cc, key=lambda m: m.area)
 
     # fill holes
-    # hull02_sm.fill_holes()
+    hull02_sm.fill_holes()
 
     # smooth
     hull02_sm = trimesh.smoothing.filter_laplacian(hull02_sm, iterations=smoothing_strength)
@@ -323,4 +338,4 @@ def fit_fin_mesh(xyz_fin, alpha=20, n_faces=512, smoothing_strength=5):
     # check
     wt_flag = hull02_rs.is_watertight
 
-    return hull02_rs, raw_mesh, wt_flag
+    return hull02_rs, raw_hull, wt_flag
