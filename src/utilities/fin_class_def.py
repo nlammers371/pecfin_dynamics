@@ -12,6 +12,7 @@ from scipy.spatial import distance_matrix
 import itertools
 from scipy.spatial import Delaunay
 from sklearn.metrics import pairwise_distances
+from sklearn.cluster import DBSCAN
 
 class FinData:
     def __init__(self, name: str = "", data_root: str = "", point_features: pd.DataFrame = None, tissue_seg_model: str = "",
@@ -280,7 +281,7 @@ class FinData:
             # self.axis_fin_array = axes
         else:
             print("Warning: body axis marked as approved. Skipping PCA estimation. Use 'b' to toggle approved status")
-    def fit_yolk_surface(self, dist_thresh=75):
+    def fit_yolk_surface(self, dist_thresh=10):
 
         # calculate distances
         df = self.full_point_data
@@ -289,9 +290,19 @@ class FinData:
         dist_mat = distance_matrix(yolk_data0, fin_data0)
         yolk_to_fin_dist = np.min(dist_mat, axis=1)  # just using simple euclidean distance for now
 
+        ### using DBSCAN to remove outliers
+        eps = 12
+        db = DBSCAN(eps=eps, min_samples=1).fit(yolk_data0)
+        labels = db.labels_
+        lb, lbc = np.unique(labels, return_counts=True)
+        lbc_top = lbc[0]
+        lbc_frac = lbc / lbc_top
+        outlier_labels = lb[lbc_frac < 0.1]
+        outlier_flags = np.isin(labels, outlier_labels)
+
         # filter for nearby surface nuclei
         dist_ft = yolk_to_fin_dist <= dist_thresh
-        yolk_data1 = yolk_data0[dist_ft]
+        yolk_data1 = yolk_data0[dist_ft & (~outlier_flags)]
 
         # now fit quadratic surface
         fit = self.polyfit2d(yolk_data1)

@@ -1,5 +1,3 @@
-import flowshape as fs
-import igl
 import numpy as np
 import meshplot as mp
 import os
@@ -11,10 +9,52 @@ from sklearn.metrics import pairwise_distances
 import open3d as o3d
 import trimesh
 from tqdm import tqdm
+from sklearn import svm
+# remeshing
+import pyvista
+import pyacvd
+import pymeshfix
+
+
+def pyvista_to_mesh(mesh):
+    v = mesh.points
+    f = mesh.faces.reshape(-1, 4)[:, 1:4]
+    return v, f
+
+
+def mesh_to_pyvista(v, f):
+    n, m = f.shape
+    threes = np.full((n, 1), 3)
+    face_arr = np.hstack((threes, f)).flatten()
+    return pyvista.PolyData(v, face_arr)
+
+def mesh_cleanup(mesh_raw, target_verts=2500):
+
+    v, f = mesh_raw.vertices, mesh_raw.faces
+    # this can give a depreciation warning but it is fine
+    mesh = mesh_to_pyvista(v, f)
+
+    # target mesh resolution
+    # target_verts = 2500
+
+    clus = pyacvd.Clustering(mesh)
+    clus.subdivide(2)
+    clus.cluster(target_verts)
+
+    remesh = clus.create_mesh()
+
+    v2, f2 = pyvista_to_mesh(remesh)
+
+    # pymeshfix is often necessary here to get rid of non-manifold vertices
+    v2, f2 = pymeshfix.clean_from_arrays(v2, f2)
+
+    mesh_out = trimesh.Trimesh(vertices=v2, faces=f2)
+
+    return mesh_out
 
 
 def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_axes, n_smooth_iters=35,
-                     weight_hm=-2, weight_temperature=5):
+                     weight_hm=-2, weight_temperature=4):
 
     yolk_xyz_o = np.matmul(yolk_xyz - np.mean(fin_df[["X", "Y", "Z"]].to_numpy(), axis=0), fin_axes.T)
     surf_points = yolk_xyz_o.copy()  # [keep_flag_surf, :]
@@ -44,8 +84,32 @@ def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_a
 
     return smoothed_mesh
 
+# script that uses single class svd to ID and remove outliers
+def flag_outlier_points(fin_df, outlier_frac=0.02):
 
-def get_yolk_distance(fin_object, yolk_dist_thresh=-10):
+    pts = fin_df[["YP", "ZP"]].to_numpy()
+    # estimate gamma (scale coefficient) with variance heuristic
+    # you may need to play with it to get good results, but this is a good starting point
+    # Make gamma larger to get finer results, make it smaller to get smoother results (less holes)
+
+    gamma = 1 / (3 * np.var(pts))
+
+    # in this case, I'm making it larger becuase otherwise it fills up the hole
+    gamma *= 2.5
+
+    # print(f"gamma: {gamma:.5f}")
+
+    # fit the model (can be quite slow!)
+    model = svm.OneClassSVM(kernel="rbf", gamma=gamma, nu=outlier_frac)
+    model.fit(pts)
+
+    outlier_flags = model.predict(pts)
+
+    # fin_df["inlier_flag"] = outlier_flags==1
+
+    return outlier_flags==1
+
+def get_yolk_distance(fin_object, yolk_dist_thresh=-5):
 
     # get fin points
     full_df = fin_object.full_point_data
@@ -136,7 +200,7 @@ def get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes, yolk_thresh=5):
     return base_axes, surf_center_b, surf_center_o
 
 
-def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.5, seg_type="tissue_only_best_model_tissue"):
+def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_thresh=-5, seg_type="tissue_only_best_model_tissue"):
 
     # get list of fin objects
     fin_object_path = os.path.join(root, "point_cloud_data", "fin_objects", "")
@@ -150,19 +214,19 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.5, seg_type="tis
     #################
     # load fin object
     wt_vec = []
+    fin_object_list = fin_object_list
     for file_ind, fp in enumerate(tqdm(fin_object_list)):
 
         point_prefix = path_leaf(fp).replace("_fin_object.pkl", "")
-        print(f"processing {point_prefix}...")
 
         fin_object = FinData(data_root=root, name=point_prefix, tissue_seg_model=seg_type)
 
         test_path = os.path.join(write_dir, point_prefix + "_smoothed_fin_mesh.obj")
         if overwrite_flag or (not os.path.isfile(test_path)):
-
+            print(f"processing {point_prefix}...")
             ############
             # calculate ditances to yolk (and load fin_df)
-            fin_df, yolk_xyz, fin_axes, nuclei_to_keep = get_yolk_distance(fin_object)
+            fin_df, yolk_xyz, fin_axes, nuclei_to_keep = get_yolk_distance(fin_object, yolk_dist_thresh=yolk_dist_thresh)
 
             if fin_df is not None:
                 ############
@@ -170,18 +234,28 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.5, seg_type="tis
                 base_axes, surf_center_b, surf_center_o = get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes)
 
                 ################
+                # flag outliers
+                if fin_df.shape[0] > 10:
+                    inlier_flags = flag_outlier_points(fin_df)
+                    inlier_nuclei = fin_df.loc[inlier_flags, "nucleus_id"].to_numpy()
+                else:
+                    inlier_nuclei = fin_df.loc[:, "nucleus_id"].to_numpy()
+
+                ################
                 # Upsample fin points
-                fin_df_upsamp = upsample_fin_point_cloud(fin_object, sample_res_um=sampling_res, root=root, points_per_nucleus=100)
+                fin_df_upsamp, nucleus_mask_array, nucleus_weight_array = upsample_fin_point_cloud(fin_object, sample_res_um=sampling_res, root=root, points_per_nucleus=100)
 
                 ################
                 # Orient and resample fin points. FIT MESH
                 # shift fin points
-                fin_points_b = np.matmul(fin_df_upsamp[["XP", "YP", "ZP"]].to_numpy() - surf_center_o, base_axes.T)
+                fin_points_b = np.matmul(fin_df_upsamp.loc[:, ["XP", "YP", "ZP"]].to_numpy() - surf_center_o, base_axes.T)
                 fin_df_upsamp[["XB", "YB", "ZB"]] = fin_points_b
 
                 # get raw points
                 nc_vec_us = fin_df_upsamp.loc[:, "nucleus_id"].to_numpy().astype(np.uint16)
-                keep_filter = np.isin(nc_vec_us, nuclei_to_keep)
+                keep_filter0 = np.isin(nc_vec_us, nuclei_to_keep)
+                keep_filter1 = np.isin(nc_vec_us, inlier_nuclei)
+                keep_filter = keep_filter0 & keep_filter1
                 fin_points = fin_df_upsamp.loc[keep_filter, ["XB", "YB", "ZB"]].to_numpy()
 
                 # convert to point cloud format
@@ -193,27 +267,33 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.5, seg_type="tis
 
                 # fit fin mesh
                 print("Fitting fin mesh...")
-                mesh_alpha = 25
+                mesh_alpha = 22
                 watertight_flag = False
                 fin_points_u = np.asarray(sampled_points.points)
                 while not watertight_flag:
                     fin_mesh, raw_mesh, watertight_flag = fit_fin_mesh(fin_points_u, alpha=mesh_alpha)
 
                     mesh_alpha -= 1 # decrement
-                    if mesh_alpha <= 20:
+                    if mesh_alpha <= 18:
                         break
 
                 ##############
                 # Apply additional smoothing to mesh regions near the fin base
                 smoothed_mesh = smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_axes)
 
+                # use pyvista for final mesh cleanup step
+                # mesh_out = mesh_cleanup(smoothed_mesh)
+
                 # save
                 fin_df.to_csv(os.path.join(write_dir, point_prefix + "_fin_data.csv"), index=False)
                 fin_df_upsamp.to_csv(os.path.join(write_dir, point_prefix + "_fin_data_upsampled.csv"), index=False)
-                raw_mesh.export(os.path.join(write_dir, point_prefix + "_rawfin_mesh.obj"))
+                raw_mesh.export(os.path.join(write_dir, point_prefix + "_raw_fin_mesh.obj"))
                 smoothed_mesh.export(os.path.join(write_dir, point_prefix + "_smoothed_fin_mesh.obj"))
 
+                np.save(os.path.join(write_dir, point_prefix + "_nucleus_id_array.npy"), nucleus_mask_array)
+                np.save(os.path.join(write_dir, point_prefix + "_nucleus_weight_array.npy"), nucleus_weight_array)
                 # add to wt vec
+
                 wt_vec.append(smoothed_mesh.is_watertight)
 
     return wt_vec
