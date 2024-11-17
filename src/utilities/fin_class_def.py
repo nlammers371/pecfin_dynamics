@@ -281,7 +281,7 @@ class FinData:
             # self.axis_fin_array = axes
         else:
             print("Warning: body axis marked as approved. Skipping PCA estimation. Use 'b' to toggle approved status")
-    def fit_yolk_surface(self, dist_thresh=10):
+    def fit_yolk_surface(self, dist_thresh=15):
 
         # calculate distances
         df = self.full_point_data

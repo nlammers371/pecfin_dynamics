@@ -14,7 +14,7 @@ from sklearn import svm
 import pyvista
 import pyacvd
 import pymeshfix
-
+from sklearn.cluster import DBSCAN
 
 def pyvista_to_mesh(mesh):
     v = mesh.points
@@ -27,6 +27,20 @@ def mesh_to_pyvista(v, f):
     threes = np.full((n, 1), 3)
     face_arr = np.hstack((threes, f)).flatten()
     return pyvista.PolyData(v, face_arr)
+
+def gs(X, row_vecs=True, norm=True):
+    if not row_vecs:
+        X = X.T
+    Y = X[0:1,:].copy()
+    for i in range(1, X.shape[0]):
+        proj = np.diag((X[i,:].dot(Y.T)/np.linalg.norm(Y,axis=1)**2).flat).dot(Y)
+        Y = np.vstack((Y, X[i,:] - proj.sum(0)))
+    if norm:
+        Y = np.diag(1/np.linalg.norm(Y,axis=1)).dot(Y)
+    if row_vecs:
+        return Y
+    else:
+        return Y.T
 
 def mesh_cleanup(mesh_raw, target_verts=2500):
 
@@ -53,8 +67,7 @@ def mesh_cleanup(mesh_raw, target_verts=2500):
     return mesh_out
 
 
-def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_axes, n_smooth_iters=35,
-                     weight_hm=-2, weight_temperature=4):
+def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_axes, n_smooth_iters=25, ref_depth=-5):
 
     yolk_xyz_o = np.matmul(yolk_xyz - np.mean(fin_df[["X", "Y", "Z"]].to_numpy(), axis=0), fin_axes.T)
     surf_points = yolk_xyz_o.copy()  # [keep_flag_surf, :]
@@ -69,8 +82,12 @@ def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_a
     dist_metric = np.multiply(yolk_dist, yolk_signs)
 
     # use distances to calculate smoothing weights
-    sm_weight_vec = np.divide(np.exp(-(dist_metric - weight_hm) / weight_temperature), 1 + np.exp(-(dist_metric - weight_hm) / weight_temperature))
-    sm_weight_vec[sm_weight_vec < 0.05] = 0
+    # sm_weight_vec = np.divide(np.exp(-(dist_metric - weight_hm) / weight_temperature), 1 + np.exp(-(dist_metric - weight_hm) / weight_temperature))
+    dist_shifted = dist_metric - ref_depth
+    dist_shifted[dist_shifted < 0] = 0
+    norm_factor = ref_depth / np.log(0.1)
+    sm_weight_vec = np.exp(-dist_shifted / norm_factor)
+    # sm_weight_vec[sm_weight_vec < 0.05] = 0
 
     smoothed_mesh = fin_mesh.copy()
 
@@ -83,6 +100,30 @@ def smooth_mesh_base(fin_mesh, fin_df, yolk_xyz, surf_center_o, fin_axes, base_a
         smoothed_mesh.vertices += deltas_w
 
     return smoothed_mesh
+
+def flag_outliers_dbscan(fin_df):
+
+    fin_points = fin_df[["XP", "YP", "ZP"]].to_numpy()
+    # two passes, more stringent eps with single min, and then less stringent wti n>4
+    eps0 = 10
+    db0 = DBSCAN(eps=eps0, min_samples=4).fit(fin_points)
+    labels0 = db0.labels_
+    lb, lbc = np.unique(labels0, return_counts=True)
+    lbc_top = lbc[0]
+    lbc_frac = lbc / lbc_top
+    outlier_labels = lb[lbc_frac < 0.1]
+    outlier_flags0 = np.isin(labels0, outlier_labels)
+
+    eps1 = 12
+    db1 = DBSCAN(eps=eps1, min_samples=1).fit(fin_points)
+    labels1 = db1.labels_
+    lb, lbc = np.unique(labels1, return_counts=True)
+    lbc_top = lbc[0]
+    lbc_frac = lbc / lbc_top
+    outlier_labels = lb[lbc_frac < 0.1]
+    outlier_flags1 = np.isin(labels1, outlier_labels)
+
+    return ~(outlier_flags0 | outlier_flags1)
 
 # script that uses single class svd to ID and remove outliers
 def flag_outlier_points(fin_df, outlier_frac=0.02):
@@ -127,6 +168,8 @@ def get_yolk_distance(fin_object, yolk_dist_thresh=-5):
         fin_points_pca = np.matmul(fin_points - shift_ref_vec, fin_axes.T)
         fin_df.loc[:, ["XP", "YP", "ZP"]] = fin_points_pca
 
+        # rerun fit to ensure we have an up-to-date estimate
+        fin_object.fit_yolk_surface()
         params = fin_object.yolk_surf_params
 
         x_min, y_min = fin_points[:, 0].min(), fin_points[:, 1].min()
@@ -157,19 +200,30 @@ def get_yolk_distance(fin_object, yolk_dist_thresh=-5):
     else:
         return None, None, None, None
 
-def get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes, yolk_thresh=5):
+def get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes, yolk_thresh=8):
 
-    # base_fin_points = fin_df.loc[np.abs(fin_df["yolk_dist"]) <= yolk_thresh, ["XP", "YP", "ZP"]].to_numpy()
-    base_fin_points_raw = fin_df.loc[np.abs(fin_df["yolk_dist"]) <= yolk_thresh, ["X", "Y", "Z"]].to_numpy()
+    base_fin_points = fin_df.loc[np.abs(fin_df["yolk_dist"]) <= yolk_thresh, ["XP", "YP", "ZP"]].to_numpy()
+    # base_fin_points_raw = fin_df.loc[np.abs(fin_df["yolk_dist"]) <= yolk_thresh, ["X", "Y", "Z"]].to_numpy()
 
     # calculate axis dims. Main one we care about is the AP axis ("YP")
     # axis_len_vec = np.max(base_fin_points, axis=0) - np.min(base_fin_points, axis=0)
 
     # find centroid
-    ref10 = np.percentile(base_fin_points_raw, 10, axis=0)
-    ref90 = np.percentile(base_fin_points_raw, 90, axis=0)
+    ref10 = np.percentile(base_fin_points, 10, axis=0)
+    ref90 = np.percentile(base_fin_points, 90, axis=0)
     point_center = (ref10 + ref90) / 2  # np.mean(base_fin_points_raw, axis=0)
-    surf_center_i = np.argmin(np.sqrt(np.sum((yolk_xyz - point_center) ** 2, axis=1)))
+
+    # use all proximal points to get a abetter estimate of AP center
+    p_thresh = np.mean(fin_df["XP"])  # , 50)
+    p_points = fin_df.loc[fin_df["XP"] <= p_thresh, ["YP"]].to_numpy()
+    point_center[1] = np.mean(p_points)
+
+    # rotate yolk surface to align with fin axes
+    shift_ref_vec0 = np.mean(fin_df[["X", "Y", "Z"]].to_numpy(), axis=0)
+    yolk_xyz_o = np.matmul(yolk_xyz - shift_ref_vec0, fin_axes.T)
+
+    # find closest point on yolk surface
+    surf_center_i = np.argmin(np.sqrt(np.sum((yolk_xyz_o - point_center) ** 2, axis=1)))
     surf_center = yolk_xyz[surf_center_i, :]  # this is the one we will use
 
     # define a local DV direction that is the cross product of the surface normal and the AP axis
@@ -182,17 +236,19 @@ def get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes, yolk_thresh=5):
     surf_normal = surf_normal / np.linalg.norm(surf_normal)
 
     # calculate local DV
-    dv_vec_base = np.cross(surf_normal, np.asarray([0, 1, 0]))
+    dv_vec_base = np.cross(np.asarray([0, 1, 0]), surf_normal)
     dv_vec_base = dv_vec_base / np.linalg.norm(dv_vec_base)
+    if dv_vec_base[0] < 0: # enforce alignment with PD
+        dv_vec_base = -dv_vec_base
 
     # define a third vector that is orthogonal to AP and local (base) DV)
-    surf_vec_rel = np.cross([0, 1, 0], dv_vec_base)
-    surf_vec_rel = surf_vec_rel / np.linalg.norm(surf_vec_rel)
+    # surf_vec_rel = np.cross(dv_vec_base,[0, 1, 0])
+    # surf_vec_rel = surf_vec_rel / np.linalg.norm(surf_vec_rel)
 
-    base_axes = np.stack([dv_vec_base, np.asarray([0, 1, 0]), surf_vec_rel], axis=1)
+    base_axes_raw = np.stack([dv_vec_base, np.asarray([0, 1, 0]), surf_normal], axis=1)
+    base_axes = gs(base_axes_raw[::-1, :])[::-1, :]
 
     # shift centerpoint into the oriented frame of reference
-    shift_ref_vec0 = np.mean(fin_df[["X", "Y", "Z"]].to_numpy(), axis=0)
     shift_ref_vec1 = np.mean(fin_df[["XP", "YP", "ZP"]].to_numpy(), axis=0)
     surf_center_o = np.matmul(surf_center - shift_ref_vec0, fin_axes.T)
     surf_center_b = np.matmul(surf_center_o - shift_ref_vec1, base_axes.T)
@@ -214,7 +270,6 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_th
     #################
     # load fin object
     wt_vec = []
-    fin_object_list = fin_object_list
     for file_ind, fp in enumerate(tqdm(fin_object_list)):
 
         point_prefix = path_leaf(fp).replace("_fin_object.pkl", "")
@@ -236,14 +291,15 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_th
                 ################
                 # flag outliers
                 if fin_df.shape[0] > 10:
-                    inlier_flags = flag_outlier_points(fin_df)
+                    inlier_flags = flag_outliers_dbscan(fin_df)
                     inlier_nuclei = fin_df.loc[inlier_flags, "nucleus_id"].to_numpy()
                 else:
                     inlier_nuclei = fin_df.loc[:, "nucleus_id"].to_numpy()
 
                 ################
                 # Upsample fin points
-                fin_df_upsamp, nucleus_mask_array, nucleus_weight_array = upsample_fin_point_cloud(fin_object, sample_res_um=sampling_res, root=root, points_per_nucleus=100)
+                fin_df_upsamp, nucleus_mask_array, nucleus_weight_array = upsample_fin_point_cloud(
+                    fin_object, sample_res_um=sampling_res, root=root, points_per_nucleus=150)
 
                 ################
                 # Orient and resample fin points. FIT MESH
