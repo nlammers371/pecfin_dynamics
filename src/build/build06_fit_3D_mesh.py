@@ -245,7 +245,7 @@ def get_base_axes(fin_object, fin_df, yolk_xyz, fin_axes, yolk_thresh=8):
     # surf_vec_rel = np.cross(dv_vec_base,[0, 1, 0])
     # surf_vec_rel = surf_vec_rel / np.linalg.norm(surf_vec_rel)
 
-    base_axes_raw = np.stack([dv_vec_base, np.asarray([0, 1, 0]), surf_normal], axis=1)
+    base_axes_raw = np.stack([dv_vec_base, np.asarray([0, 1, 0]), surf_normal], axis=0)
     base_axes = gs(base_axes_raw[::-1, :])[::-1, :]
 
     # shift centerpoint into the oriented frame of reference
@@ -270,7 +270,7 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_th
     #################
     # load fin object
     wt_vec = []
-    for file_ind, fp in enumerate(tqdm(fin_object_list)):
+    for file_ind, fp in enumerate(tqdm(fin_object_list[:6])):
 
         point_prefix = path_leaf(fp).replace("_fin_object.pkl", "")
 
@@ -280,7 +280,7 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_th
         if overwrite_flag or (not os.path.isfile(test_path)):
             print(f"processing {point_prefix}...")
             ############
-            # calculate ditances to yolk (and load fin_df)
+            # calculate distances to yolk (and load fin_df)
             fin_df, yolk_xyz, fin_axes, nuclei_to_keep = get_yolk_distance(fin_object, yolk_dist_thresh=yolk_dist_thresh)
 
             if fin_df is not None:

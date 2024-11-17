@@ -196,7 +196,7 @@ def get_gaussian_masks(fin_df, mask, sample_res_um, z_factor, scale_vec, sample_
             CORR[np.eye(3)==1] = v_vec
             # print("fix")
 
-        factor = np.min([np.max([nn_scale / r_vals[0], 1]), 2])
+        factor = np.min([np.max([nn_scale / r_vals[0], 1]), 1.5])
         scale_factors = nn_scale / (factor * np.asarray(np.asarray(r_vals[::-1])))
         scale_factors[scale_factors > 1] = 1
         # scale_factors = np.asarray([factor, factor, factor])
