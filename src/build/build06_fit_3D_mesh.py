@@ -270,7 +270,7 @@ def fin_mesh_wrapper(root, overwrite_flag=False, sampling_res=0.75, yolk_dist_th
     #################
     # load fin object
     wt_vec = []
-    for file_ind, fp in enumerate(tqdm(fin_object_list[:6])):
+    for file_ind, fp in enumerate(tqdm(fin_object_list)):
 
         point_prefix = path_leaf(fp).replace("_fin_object.pkl", "")
 
