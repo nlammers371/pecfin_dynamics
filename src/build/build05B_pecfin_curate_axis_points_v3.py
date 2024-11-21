@@ -713,6 +713,8 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
         label_opacity = 0.35
         if fin_data.seg_approved:
             label_opacity = 0.65
+        viewer.add_labels(mask_zarr, scale=scale_vec, name='nuclei masks (static)', opacity=1,
+                              visible=False)
         label_layer = viewer.add_labels(pd_mask, scale=scale_vec, name='tissue predictions (static)', opacity=label_opacity, visible=False)
         label_layer_fin = viewer.add_labels(label_mask_fin, scale=scale_vec, name='tissue predictions (fin region)', opacity=label_opacity,
                                         visible=False)
@@ -795,7 +797,7 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240711_01"  # "20240712_01"
+    experiment_date = "20240712_01"  # "20240712_01"
     overwrite = True
     fluo_flag = False
     use_model_priors = True
@@ -803,7 +805,7 @@ if __name__ == '__main__':
     seg_model = "tdTom-bright-log-v5" #"tdTom-bright-log-v5"  # "tdTom-dim-log-v3"
     # point_model = "point_models_pos"
 
-    well_num = 45 #None
+    well_num = 34 #None
     time_int = 0 #None
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
