@@ -797,7 +797,7 @@ def curate_pec_fins(root, experiment_date, seg_model, seg_type, well_num=None, t
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     root = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/"
-    experiment_date = "20240619"  # "20240712_01"
+    experiment_date = "20240619"
     overwrite = True
     fluo_flag = False
     use_model_priors = True
@@ -806,7 +806,7 @@ if __name__ == '__main__':
     # point_model = "point_models_pos"
 
     well_num = 2 #None
-    time_int = 30 #None
+    time_int = 100 #None
     curate_pec_fins(root, experiment_date=experiment_date, well_num=well_num, seg_type="tissue_only_best_model_tissue", #seg_type="seg01_best_model_tbx5a", #
                     seg_model=seg_model, time_int=time_int)
 
