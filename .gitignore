@@ -1,11 +1,14 @@
 # Ignore all .ipynb_checkpoints folders
 **/.ipynb_checkpoints/
 
-# Ignore all __pycache__ folders
+# Ignore all __pycache__ directories (at any level)
 **/__pycache__/
 
+# Ignore all .pyc files
+*.pyc
+
 # Ignore .idea folder and its contents
-.idea/
+*.idea/
 
 # Ignore everything inside src/build/__pycache__/
 src/build/__pycache__/
