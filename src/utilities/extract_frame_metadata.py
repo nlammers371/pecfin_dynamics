@@ -60,24 +60,42 @@ def parse_nd2_metadata(nd2_path):
     im_raw_dask = imObject.to_dask()
     n_channels = len(imObject.metadata.channels)
 
+    # get axis ordering
+    dim_dict = imObject.sizes
+    dim_order = list(dim_dict.keys())
+
+    target_order = ['T', 'P', 'C', 'Z', 'Y', 'X']
+    target_order = [d for d in target_order if d in dim_order]
+    permute_vec = [dim_order.index(target_order[d]) for d in range(len(target_order))]
+    im_raw_dask = da.transpose(im_raw_dask, tuple(permute_vec))
+    # nd2_shape = im_raw_dask.shape
+    # well_shape = tuple(nd2_shape[-3:])
+
     # [well, channel, time, z, y, x]
-    if len(im_raw_dask.shape) == 4 and n_channels == 1:
-        im_raw_dask = im_raw_dask[:, None, None, :, :, :]
-
-    elif len(im_raw_dask.shape) == 5 and n_channels == 1:
-        im_raw_dask = im_raw_dask[:, None, :, :, :, :]
-
-    elif len(im_raw_dask.shape) == 5 and n_channels == 2:
-        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4))
-        im_raw_dask = im_raw_dask[:, :, None, :, :, :]
-
-    elif len(im_raw_dask.shape) == 6 and n_channels == 2:
-        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4, 5))
-
-    im_shape = im_raw_dask.shape
-    n_z_slices = im_shape[3]
-    n_time_points = im_shape[2]
-    n_wells = im_shape[0]
+    # if len(im_raw_dask.shape) == 4 and n_channels == 1:
+    #     im_raw_dask = im_raw_dask[:, None, None, :, :, :]
+    #
+    # elif len(im_raw_dask.shape) == 5 and n_channels == 1:
+    #     im_raw_dask = im_raw_dask[:, None, :, :, :, :]
+    #
+    # elif len(im_raw_dask.shape) == 5 and n_channels == 2:
+    #     im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4))
+    #     im_raw_dask = im_raw_dask[:, :, None, :, :, :]
+    #
+    # elif len(im_raw_dask.shape) == 6 and n_channels == 2:
+    #     # im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4, 5))
+    #     im_raw_dask = da.transpose(im_raw_dask, (1, 3, 0, 2, 4, 5))
+    #
+    # im_shape = im_raw_dask.shape
+    n_z_slices = dim_dict["Z"]
+    if "T" in dim_order:
+        n_time_points = dim_dict["T"]
+    else:
+        n_time_points = 1
+    if "T" in dim_order:
+        n_wells = dim_dict["P"]
+    else:
+        n_wells = 1
 
     scale_vec = imObject.voxel_size()
 
@@ -130,6 +148,8 @@ def parse_nd2_metadata(nd2_path):
     imObject.close()
 
     return well_df
+
+
 def parse_curation_metadata(root, experiment_date):
     curation_path = os.path.join(root, "metadata", "curation", experiment_date + "_curation_info.xlsx")
     if os.path.isfile(curation_path):
@@ -175,25 +195,30 @@ def extract_frame_metadata(
 
     n_channels = len(imObject.metadata.channels)
 
-    # [well, channel, time, z, y, x]
-    if len(im_raw_dask.shape) == 4 and n_channels == 1:
-        im_raw_dask = im_raw_dask[:, None, None, :, :, :]
+    dim_dict = imObject.sizes
+    dim_order = list(dim_dict.keys())
 
-    elif len(im_raw_dask.shape) == 5 and n_channels == 1:
-        im_raw_dask = im_raw_dask[:, None, :, :, :, :]
-
-    elif len(im_raw_dask.shape) == 5 and n_channels == 2:
-        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4))
-        im_raw_dask = im_raw_dask[:, :, None, :, :, :]
-
-    elif len(im_raw_dask.shape) == 6 and n_channels == 2:
-        im_raw_dask = da.transpose(im_raw_dask, (0, 2, 1, 3, 4, 5))
+    target_order = ['T', 'P', 'C', 'Z', 'Y', 'X']
+    target_order = [d for d in target_order if d in dim_order]
+    permute_vec = [dim_order.index(target_order[d]) for d in range(len(target_order))]
+    im_raw_dask = da.transpose(im_raw_dask, tuple(permute_vec))
+    # nd2_shape = im_raw_dask.shape
+    # well_shape = tuple(nd2_shape[-3:])
 
     nd2_shape = im_raw_dask.shape
 
     metadata = dict({})
-    metadata["n_time_points"] = nd2_shape[2]
-    metadata["n_wells"] = nd2_shape[0]
+    # n_z_slices = dim_dict["Z"]
+    if "T" in dim_order:
+        n_time_points = dim_dict["T"]
+    else:
+        n_time_points = 1
+    if "T" in dim_order:
+        n_wells = dim_dict["P"]
+    else:
+        n_wells = 1
+    metadata["n_time_points"] = n_time_points
+    metadata["n_wells"] = n_wells
     n_z = nd2_shape[-3]
     n_x = nd2_shape[-1]
     n_y = nd2_shape[-2]
