@@ -1,9 +1,9 @@
-import sys
-import site
-
-user_site = site.getusersitepackages()
-if user_site in sys.path:
-    sys.path.remove(user_site)
+# import sys
+# import site
+#
+# user_site = site.getusersitepackages()
+# if user_site in sys.path:
+#     sys.path.remove(user_site)
 
 import numpy as np
 import napari
@@ -17,17 +17,16 @@ nd2_path = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecf
 well_int = 0
 
 # extract key metadata info
-with nd2.ND2File(nd2_path) as imObject:
-    im_array_dask = imObject.to_dask()
-    # Persist the array so that its data is loaded while the file is open
-    im_array_dask = im_array_dask.persist()
-    # (Optionally, wait for persistence to finish)
-    im_array = im_array_dask.compute()
-    # Extract metadata as needed
-    dim_dict = imObject.sizes
-    res_raw = imObject.voxel_size()
-
-    data_ctzyx = np.squeeze(im_array_dask[:, 100:110, well_int, :, :, :])
+imObject = nd2.ND2File(nd2_path)
+im_array_dask = imObject.to_dask()
+# Persist the array so that its data is loaded while the file is open
+# im_array_dask = im_array_dask.persist()
+# (Optionally, wait for persistence to finish)
+# im_array = im_array_dask.compute()
+# Extract metadata as needed
+dim_dict = imObject.sizes
+res_raw = imObject.voxel_size()
+data_ctzyx = np.squeeze(im_array_dask[:, 100:110, well_int, :, :, :])
 
 # n_time_points = dim_dict["T"]
 # n_wells = dim_dict["P"]
