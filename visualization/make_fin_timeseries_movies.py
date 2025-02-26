@@ -7,17 +7,20 @@
 
 import numpy as np
 import napari
-import nd2
+from aicsimageio import AICSImage
+from readlif.reader import LifFile
+import bioio_lif
 import dask.array as da
 
 # set paths
 # nd2_path = "E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\raw_data\\20231214\\tdTom_40X_pecfin_timeseries.nd2"
-nd2_path = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/raw_data/20250122/SG-tbx5a_tdTom-H2B_timelapse.nd2"
+im_path = "/media/nick/hdd021/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/raw_data/amullen/LIFFiles/Pax7Phallodin_Mutant_24hpf_3_23_24/031624_Pax7_Phallodin.lif"
 # zarr_path = f"E:\\Nick\\Cole Trapnell's Lab Dropbox\\Nick Lammers\\Nick\\pecfin_dynamics\\fin_morphodynamics\\built_data\zarr_image_files\\20240223\\20240223_well0002.zarr"
 well_int = 0
 
 # extract key metadata info
-imObject = nd2.ND2File(nd2_path)
+imObject = LifFile(im_path)
+# imObject = AICSImage(im_path)
 im_array_dask = imObject.to_dask()
 # Persist the array so that its data is loaded while the file is open
 # im_array_dask = im_array_dask.persist()
