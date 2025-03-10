@@ -1,7 +1,6 @@
 from aicsimageio import AICSImage
 import zarr
 import numpy as np
-import napari
 from skimage.transform import resize
 import glob2 as glob
 import sys
