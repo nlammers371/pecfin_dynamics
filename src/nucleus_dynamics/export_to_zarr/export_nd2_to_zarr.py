@@ -1,7 +1,6 @@
 from aicsimageio import AICSImage
 import zarr
 import numpy as np
-import napari
 from skimage.transform import resize
 import glob2 as glob
 import sys
@@ -32,7 +31,7 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
         imObject = nd2.ND2File(nd2_files[0])
         im_array_dask = imObject.to_dask()
         # nd2_shape = im_array_dask.shape
-
+cd  
 
         n_time_points = metadata["n_time_points"]
         n_wells = metadata["n_wells"]
