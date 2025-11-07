@@ -1,16 +1,10 @@
-from aicsimageio import AICSImage
 import zarr
 import numpy as np
-from skimage.transform import resize
 import glob2 as glob
-import sys
-import threading
-import scipy.ndimage as ndi
 import os
 import nd2
 import dask.array as da
 from tqdm import tqdm
-from src.utilities.register_image_stacks import register_timelapse
 from src.utilities.extract_frame_metadata import extract_frame_metadata
 
 def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False, nuclear_channel=None, channel_names=None):
@@ -78,7 +72,7 @@ def export_nd2_to_zarr(root,experiment_date, overwrite_flag, metadata_only=False
             prev_flag = os.path.isdir(zarr_file)
             # Initialize zarr array
             if not multichannel_flag:
-                well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=(1,) + well_shape)
+                well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=(1,) + well_shape[-3:])
             else:
                 well_zarr = zarr.open(zarr_file, mode='a', shape=well_shape, dtype=dtype, chunks=tuple([1, 1]) + well_shape[-3:])
 

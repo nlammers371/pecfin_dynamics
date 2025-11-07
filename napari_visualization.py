@@ -1,25 +1,33 @@
-from aicsimageio import AICSImage
-import numpy as np
 import napari
-import zarr
+import nd2  # from the `nd2` package
+import dask.array as da
+import numpy as np
+from pathlib import Path
 
 
-# root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data/HCR/"
-# experiment_date = "20240112"
-# root = "/Users/nick/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/fin_morphodynamics/raw_data"
-# experiment_date = "20240223"
-#
-# file_list = sorted(glob.glob(os.path.join(root, experiment_date, "") + "*.nd2"))
-# full_filename = "/Volumes/My Passport/pec_fin_dynamics/20240223_wt_tests/B03_test_48hpf001.nd2"
-full_filename = "Y:\\data\\pecfin_dynamics\\built_data\\cellpose_output\\tdTom-dim-log-v3\\20240425\\20240425_well0001_probs.zarr"
-# full_filename = "/media/nick/hdd02/Cole Trapnell's Lab Dropbox/Nick Lammers/Nick/pecfin_dynamics/built_data/zarr_image_files/20240619/20240619_well0000.zarr"
-prob_zarr = zarr.open(full_filename, mode="r")
-# imData = np.squeeze(imObject.data)
+path = Path("Y:\\projects\\data\\killi_tracker\\raw_data\\YX1\\20250621\\kf_nls_bc1_10x_series.nd2")
 
+"""Open ND2 lazily (T, C, Z, Y, X) → (Z, Y, X) or (C, Z, Y, X) dask array."""
+nd = nd2.ND2File(path)  # context manager not strictly needed; napari holds ref
+shape = nd.shape        # e.g. (T, H, W, Z, C) or (T, W, Z, C, Y, X)
+
+# convert to a dask array on‐the‐fly
+# nd2 puts axes in this order: T, Y, X, Z, C  *if all are present*
+# You can pick the subset you want. Here we keep everything.
+darr = nd.to_dask()
+
+          # crude check for “likely channels”
+darr = da.moveaxis(darr, -3, 2)  # C axis right after T
+meta = {
+    "scale": nd.voxel_size()[::-1],  # (Z, Y, X) µm per pixel
+    "name": path.name
+}
 # Extract pixel sizes and bit_depth
 # res_raw = prob_zarr.attrs["voxel_size_um"]
-
-viewer = napari.view_image(prob_zarr[10],  scale=tuple([1.5, 0.55, 0.55]))
+sample_id = 1
+sample_well = darr[:, sample_id, :, :, :].compute()  # e.g. (T, Z, Y, X) or (C, T, Z, Y, X)
+viewer = napari.view_image(sample_well, channel_axis=1, scale=tuple([3.5, 0.55, 0.55]), contrast_limits=[0, 2500])
 # # labels_layer = viewer.add_labels(lbData, name='segmentation', scale=res_array)
 if __name__ == '__main__':
     napari.run()
+    print("check")
