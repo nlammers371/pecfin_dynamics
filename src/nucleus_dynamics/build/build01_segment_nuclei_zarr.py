@@ -189,7 +189,7 @@ def cellpose_segmentation(
         meta_keys = data_tzyx.attrs.keys()
         meta_dict = data_tzyx.attrs
         if len(data_tzyx.shape) == 5:
-            data_tzyx = data_tzyx[nuclear_channel]
+            data_tzyx = data_tzyx[:, nuclear_channel, :, :, :]
         # n_time_points = data_tzyx.shape[0]
 
         # make sure we are not accidentally up-sampling
